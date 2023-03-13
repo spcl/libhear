@@ -27,18 +27,13 @@ std::mt19937 encr_key_generator(rd());
 std::mt19937 encr_noise_generator;
 std::uniform_int_distribution<encr_key_t> encr_key_distr(0, max_encr_key);
 
+/*
+ * We need two pre-allocated buffers to enable pipelining,
+ * i.e., memcopy/encryption overlapped with communication.
+ */
+const std::size_t mpool_size = 64;
+
 const int root_rank = 0;
-
-struct HearState
-{
-public:
-    std::vector<std::vector<encr_key_t>> _k_s_storage;
-    std::unordered_map<MPI_Comm, std::vector<encr_key_t> *> _k_s_map;
-    std::vector<encr_key_t> _k_n_storage;
-    std::unordered_map<MPI_Comm, encr_key_t *> _k_n_map;
-};
-
-class HearState hear;
 
 static encr_key_t __generate_encr_key()
 {
@@ -73,7 +68,40 @@ static void __decrypt(T rbuf, int count, std::vector<encr_key_t> &k_s, encr_key_
     }
 }
 
-static int hear_insert_new_comm(MPI_Comm comm)
+struct HearState
+{
+private:
+    std::vector<std::vector<encr_key_t>> _k_s_storage;
+    std::unordered_map<MPI_Comm, std::vector<encr_key_t> *> _k_s_map;
+    std::vector<encr_key_t> _k_n_storage;
+    std::unordered_map<MPI_Comm, encr_key_t *> _k_n_map;
+
+public:
+
+    HearState();
+    ~HearState();
+
+    static void free_memory(void *buf);
+    static int insert_new_comm(MPI_Comm comm);
+    static void* encrypt_sendbuf(const void *sendbuf, void *recvbuf, int count,
+                                 MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
+    static int decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
+                               MPI_Op op, MPI_Comm comm);
+};
+
+class HearState hear;
+
+HearState::HearState()
+{
+    /* Initialize internal state */
+}
+
+HearState::~HearState()
+{
+    /* Clean internal state */
+}
+
+int HearState::insert_new_comm(MPI_Comm comm)
 {
     int comm_size;
     int my_rank;
@@ -108,7 +136,7 @@ static int hear_insert_new_comm(MPI_Comm comm)
     return MPI_SUCCESS;
 }
 
-static void* hear_encrypt_sendbuf(const void *sendbuf, void *recvbuf, int count,
+void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int count,
                                   MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
     char *encr_sbuf = nullptr;
@@ -139,8 +167,8 @@ static void* hear_encrypt_sendbuf(const void *sendbuf, void *recvbuf, int count,
     return static_cast<void *>(encr_sbuf);
 }
 
-static int hear_decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
-                                MPI_Op op, MPI_Comm comm)
+int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
+                          MPI_Op op, MPI_Comm comm)
 {
     /* d3crypt10n */
     if (datatype == MPI_INT) {
@@ -154,7 +182,7 @@ static int hear_decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
     return MPI_SUCCESS;
 }
 
-static void hear_free_memory(void *buf)
+void HearState::free_memory(void *buf)
 {
     assert(buf);
 
@@ -169,7 +197,7 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     void *encr_sendbuf;
     int ret;
 
-    encr_sendbuf = hear_encrypt_sendbuf(sendbuf, recvbuf, count, datatype, op, comm);
+    encr_sendbuf = hear.encrypt_sendbuf(sendbuf, recvbuf, count, datatype, op, comm);
     if (encr_sendbuf == nullptr)
         return MPI_ERR_BUFFER;
 
@@ -178,10 +206,10 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 #endif
     ret = PMPI_Allreduce(encr_sendbuf, recvbuf, count, datatype, op, comm);
     if (ret == MPI_SUCCESS)
-        ret = hear_decrypt_recvbuf(recvbuf, count, datatype, op, comm);
+        ret = hear.decrypt_recvbuf(recvbuf, count, datatype, op, comm);
 
 cleanup:
-    hear_free_memory(encr_sendbuf);
+    hear.free_memory(encr_sendbuf);
 
     return ret;
 }
@@ -213,7 +241,7 @@ int MPI_Init(int *argc, char ***argv)
      */
 
     if (ret == MPI_SUCCESS)
-        ret = hear_insert_new_comm(MPI_COMM_WORLD);
+        ret = hear.insert_new_comm(MPI_COMM_WORLD);
 
     return ret;
 }
@@ -228,7 +256,7 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     ret = PMPI_Comm_create(comm, group, newcomm);
 
     if (ret == MPI_SUCCESS)
-        ret = hear_insert_new_comm(*newcomm);
+        ret = hear.insert_new_comm(*newcomm);
 
     return ret;
 }
