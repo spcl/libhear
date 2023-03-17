@@ -1,0 +1,4 @@
+.vscode/
+.idea/
+float_tests/results/
+**/a.out
