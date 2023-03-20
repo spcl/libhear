@@ -19,17 +19,21 @@ template<typename T, typename K>
 inline void __encrypt(T encr_sbuf, K sbuf, int count, int rank,
                       std::vector<encr_key_t> &k_s, encr_key_t k_n)
 {
+    encr_key_t key = k_n + k_s[rank];
     for (auto i = 0; i < count; i++) {
-        encr_sbuf[i] = sbuf[i] + prng(k_n + k_s[rank] + i);
+        encr_sbuf[i] = sbuf[i] + prng(key + i);
     }
 }
 
 template<typename T>
 inline void __decrypt(T rbuf, int count, std::vector<encr_key_t> &k_s, encr_key_t k_n)
 {
+    encr_key_t key;
+
     for (auto i = 0; i < count; i++) {
+        key = k_n + i;
         for (auto j = 0; j < k_s.size(); j++) {
-            rbuf[i] = rbuf[i] - prng(k_n + k_s[j] + i);
+            rbuf[i] = rbuf[i] - prng(key + k_s[j]);
         }
     }
 }
