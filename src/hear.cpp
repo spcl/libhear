@@ -3,6 +3,7 @@
 #include <random>
 #include <iostream>
 #include <limits>
+#include <functional>
 #include <cassert>
 #include <cstring>
 
@@ -33,20 +34,28 @@ struct HearState
 
 private:
 
-    std::vector<std::vector<encr_key_t>> _k_s_storage;
-    std::unordered_map<MPI_Comm, std::vector<encr_key_t> *> _k_s_map;
-    std::vector<encr_key_t> _k_n_storage;
-    std::unordered_map<MPI_Comm, encr_key_t *> _k_n_map;
+    std::vector<std::vector<encryption::encr_key_t>> _k_s_storage;
+    std::unordered_map<MPI_Comm, std::vector<encryption::encr_key_t> *> _k_s_map;
+    std::vector<encryption::encr_key_t> _k_n_storage;
+    std::unordered_map<MPI_Comm, encryption::encr_key_t *> _k_n_map;
+
+    /* MPI_INT */
+    std::function<void(int *, const int *, int, int, std::vector<encryption::encr_key_t> &, encryption::encr_key_t, bool)> encrypt_block_int;
+    std::function<void(int *, int, std::vector<encryption::encr_key_t> &, encryption::encr_key_t)> decrypt_block_int;
+
+    std::function<encryption::encr_key_t(encryption::encr_key_t)> prng;
+
 #ifdef USE_MPOOL
-    HearMpool _sbuf_mpool;
+    mpool::SbufMpool _sbuf_mpool;
 #endif
 
 public:
 
-    HearState() = default;
+    HearState(
 #ifdef USE_MPOOL
-    HearState(std::size_t mpool_size, std::size_t mpool_sbuf_len);
+	      std::size_t mpool_size, std::size_t mpool_sbuf_len
 #endif
+	      );
     ~HearState();
 
     void release_memory(void *buf);
@@ -61,13 +70,30 @@ public:
 
 class HearState *hear;
 
-#ifdef USE_MPOOL
-HearState::HearState(std::size_t mpool_size, std::size_t mpool_sbuf_len)
-    : _sbuf_mpool(mpool_size, mpool_sbuf_len)
-{
 
-}
+HearState::HearState(
+#ifdef USE_MPOOL
+		     std::size_t mpool_size,
+		     std::size_t mpool_sbuf_len
 #endif
+		     )
+#ifdef USE_MPOOL
+    : _sbuf_mpool(mpool_size, mpool_sbuf_len)
+#endif
+{
+    this->encrypt_block_int = encryption::__encrypt2_naive<int *, const int *>;
+    this->decrypt_block_int = encryption::__decrypt2_naive<int *>;
+    this->prng = encryption::prng;
+
+#ifdef AESNI
+    if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
+        this->encrypt_block_int = encryption::__encrypt2_aesni128<int *, const int*>;
+	this->decrypt_block_int = encryption::__decrypt2_aesni128<int *>;
+	this->prng = encryption::aesni128_prng;
+    }
+#endif    
+}
+
 
 HearState::~HearState()
 {
@@ -76,7 +102,7 @@ HearState::~HearState()
 
 inline void HearState::update_k_n(MPI_Comm comm)
 {
-    *(_k_n_map[comm]) = prng(*(_k_n_map[comm]));
+    *(_k_n_map[comm]) = this->prng(*(_k_n_map[comm]));
 }
 
 inline int HearState::insert_new_comm(MPI_Comm comm)
@@ -88,14 +114,14 @@ inline int HearState::insert_new_comm(MPI_Comm comm)
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
 
-    hear->_k_s_storage.push_back(std::vector<encr_key_t>(comm_size, my_rank));
-    hear->_k_s_storage.back()[my_rank] = generate_encr_key();
+    hear->_k_s_storage.push_back(std::vector<encryption::encr_key_t>(comm_size, my_rank));
+    hear->_k_s_storage.back()[my_rank] = encryption::generate_encr_key();
     hear->_k_s_map.insert({comm, &hear->_k_s_storage.back()});
     ret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, (*(hear->_k_s_map[comm])).data(), 1, MPI_UNSIGNED, comm);
     if (ret != MPI_SUCCESS)
         return ret;
 
-    hear->_k_n_storage.push_back(my_rank == root_rank ? generate_encr_key() : 42);
+    hear->_k_n_storage.push_back(my_rank == root_rank ? encryption::generate_encr_key() : 42);
     hear->_k_n_map.insert({comm, &hear->_k_n_storage.back()});
     ret = MPI_Bcast(hear->_k_n_map[comm], 1, MPI_UNSIGNED, root_rank, comm);
     if (ret != MPI_SUCCESS)
@@ -110,8 +136,10 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
     void *encr_sbuf = nullptr;
     int type_size;
     int sbuf_len;
+    int comm_size;
     int my_rank;
 
+    MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
     MPI_Type_size(datatype, &type_size);
     sbuf_len = count * type_size;
@@ -128,9 +156,10 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 
     /* 3ncrypt10n */
     if (datatype == MPI_INT) {
-        __encrypt<int *, const int *>(reinterpret_cast<int *>(encr_sbuf),
-                                      reinterpret_cast<const int *>(sendbuf), count, my_rank,
-                                      *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	this->encrypt_block_int(reinterpret_cast<int *>(encr_sbuf),
+				reinterpret_cast<const int *>(sendbuf), count, my_rank,
+				*hear->_k_s_map[comm], *hear->_k_n_map[comm],
+				my_rank == (comm_size - 1) ? 1 : 0);
     } else {
         std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
 #ifndef USE_MPOOL
@@ -149,8 +178,8 @@ inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype dat
 {
     /* d3crypt10n */
     if (datatype == MPI_INT) {
-        __decrypt<int *>(reinterpret_cast<int *>(recvbuf), count,
-                         *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	this->decrypt_block_int(reinterpret_cast<int *>(recvbuf), count,
+				*hear->_k_s_map[comm], *hear->_k_n_map[comm]);
     } else {
         std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
         return MPI_ERR_TYPE;
@@ -298,15 +327,17 @@ cleanup:
 
 static void alloc_state()
 {
+
 #ifdef USE_PIPELINING
-    if(const char* env = std::getenv("HEAR_PIPELINING_BLOCK_SIZE"))
+    if (const char* env = std::getenv("HEAR_PIPELINING_BLOCK_SIZE"))
         pipelining_block_size = std::atoi(env);
 #endif
+
 #ifdef USE_MPOOL
-    if(const char* env = std::getenv("HEAR_MPOOL_SIZE"))
+    if (const char* env = std::getenv("HEAR_MPOOL_SIZE"))
         mpool_size = std::atoi(env);
 
-    if(const char* env = std::getenv("HEAR_MPOOL_SBUF_LEN"))
+    if (const char* env = std::getenv("HEAR_MPOOL_SBUF_LEN"))
         mpool_sbuf_len = std::atoi(env);
 
     hear = new HearState(mpool_size, mpool_sbuf_len);
@@ -314,6 +345,11 @@ static void alloc_state()
 #else
     hear = new HearState();
     assert(hear);
+#endif
+
+#ifdef AESNI
+    char encr_key[] = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
+    encryption::aesni128_load_key(encr_key);
 #endif
 }
 

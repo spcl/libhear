@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <list>
 
-struct HearMpool
+namespace mpool {
+
+struct SbufMpool
 {
 
 private:
@@ -16,13 +18,15 @@ private:
 
 public:
 
-    HearMpool() = default;
-    HearMpool(const size_t pool_size, const size_t buf_len);
-    ~HearMpool();
+    SbufMpool() = default;
+    SbufMpool(const size_t pool_size, const size_t buf_len);
+    ~SbufMpool();
 
     void* acquire_buf();
     void release_buf(void *buf);
 
 };
+
+}
 
 #endif

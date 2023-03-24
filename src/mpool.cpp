@@ -3,7 +3,9 @@
 
 #include "mpool.hpp"
 
-HearMpool::HearMpool(const size_t pool_size, const size_t buf_len)
+namespace mpool {
+
+SbufMpool::SbufMpool(const size_t pool_size, const size_t buf_len)
     : _buf_len(buf_len)
 {
     char *ptr;
@@ -20,12 +22,12 @@ HearMpool::HearMpool(const size_t pool_size, const size_t buf_len)
     }
 }
 
-HearMpool::~HearMpool()
+SbufMpool::~SbufMpool()
 {
     cleanup();
 }
 
-void HearMpool::cleanup()
+void SbufMpool::cleanup()
 {
     char *ptr;
 
@@ -34,7 +36,7 @@ void HearMpool::cleanup()
     }
 }
 
-void* HearMpool::acquire_buf()
+void* SbufMpool::acquire_buf()
 {
     void *t = nullptr;
 
@@ -46,8 +48,10 @@ void* HearMpool::acquire_buf()
     return t;
 }
 
-void HearMpool::release_buf(void *buf)
+void SbufMpool::release_buf(void *buf)
 {
     assert(buf);
     _mpool.push_back(reinterpret_cast<char *>(buf));
+}
+
 }
