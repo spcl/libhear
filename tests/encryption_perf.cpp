@@ -43,15 +43,15 @@ int main(int argc, char **argv)
     __m256i *sbuf = reinterpret_cast<__m256i*>(_mm_malloc(bufsize, 32));
     __m256i *encr_sbuf = reinterpret_cast<__m256i*>(_mm_malloc(bufsize, 32));
 #else
-    int *sbuf = new int[nitems];
-    int *encr_sbuf = new int[nitems];
+    unsigned int *sbuf = new unsigned int[nitems];
+    unsigned int *encr_sbuf = new unsigned int[nitems];
 #endif
-    std::vector<encryption::encr_key_t> k_s(nranks);
+    std::vector<unsigned int> k_s(nranks);
 
     random_gen.seed(42);
-    randomize_vector<int>(reinterpret_cast<int *>(sbuf), nitems);
-    randomize_vector<encryption::encr_key_t>(k_s.data(), nranks);
-    encryption::encr_key_t k_n = static_cast<encryption::encr_key_t>(random_gen());
+    randomize_vector<unsigned int>(reinterpret_cast<unsigned int *>(sbuf), nitems);
+    randomize_vector<unsigned int>(k_s.data(), nranks);
+    unsigned int k_n = static_cast<unsigned int>(random_gen());
 
 #ifdef AESNI
     char encr_key[] = {0x2b, 0x7e, 0x15, 0x16,
@@ -65,13 +65,13 @@ int main(int argc, char **argv)
 
     for (auto i = 0; i < warmup_niters; i++) {
 #ifdef AESNI
-	encryption::__encrypt2_aesni128<int *, int*>(reinterpret_cast<int *>(encr_sbuf),
-						  reinterpret_cast<int *>(sbuf),
-						  nitems, 0, k_s, k_n, 0);
+	encryption::encrypt_int_sum_aesni128(reinterpret_cast<unsigned int *>(encr_sbuf),
+					     reinterpret_cast<unsigned int *>(sbuf),
+					     nitems, 0, k_s, k_n, 0);
 #else
-	encryption::__encrypt2_naive<int *, int*>(reinterpret_cast<int *>(encr_sbuf),
-					       reinterpret_cast<int *>(sbuf),
-					       nitems, 0, k_s, k_n, 0);
+	encryption::encrypt_int_sum_naive(reinterpret_cast<unsigned int *>(encr_sbuf),
+					  reinterpret_cast<unsigned int *>(sbuf),
+					  nitems, 0, k_s, k_n, 0);
 #endif
     }
 
@@ -79,13 +79,13 @@ int main(int argc, char **argv)
 
     for (auto i = 0; i < niters; i++) {
 #ifdef AESNI
-	encryption::__encrypt2_aesni128<int *, int*>(reinterpret_cast<int *>(encr_sbuf),
-						  reinterpret_cast<int *>(sbuf),
-						  nitems, 0, k_s, k_n, 0);
+	encryption::encrypt_int_sum_aesni128(reinterpret_cast<unsigned int *>(encr_sbuf),
+					     reinterpret_cast<unsigned int *>(sbuf),
+					     nitems, 0, k_s, k_n, 0);
 #else
-	encryption::__encrypt2_naive<int *, int*>(reinterpret_cast<int *>(encr_sbuf),
-					       reinterpret_cast<int *>(sbuf),
-					       nitems, 0, k_s, k_n, 0);
+	encryption::encrypt_int_sum_naive(reinterpret_cast<unsigned int *>(encr_sbuf),
+					  reinterpret_cast<unsigned int *>(sbuf),
+					  nitems, 0, k_s, k_n, 0);
 #endif
     }
 
@@ -93,9 +93,9 @@ int main(int argc, char **argv)
 
     for (auto i = 0; i < warmup_niters; i++) {
 #ifdef AESNI
-	encryption::__decrypt2_aesni128<int *>(reinterpret_cast<int *>(encr_sbuf), nitems, k_s, k_n);
+	encryption::decrypt_int_sum_aesni128(reinterpret_cast<unsigned int *>(encr_sbuf), nitems, k_s, k_n);
 #else
-	encryption::__decrypt2_naive<int *>(reinterpret_cast<int *>(encr_sbuf), nitems, k_s, k_n);
+	encryption::decrypt_int_sum_naive(reinterpret_cast<unsigned int *>(encr_sbuf), nitems, k_s, k_n);
 #endif
     }
 
@@ -103,9 +103,9 @@ int main(int argc, char **argv)
 
     for (auto i = 0; i < niters; i++) {
 #ifdef AESNI
-	encryption::__decrypt2_aesni128<int *>(reinterpret_cast<int *>(encr_sbuf), nitems, k_s, k_n);
+	encryption::decrypt_int_sum_aesni128(reinterpret_cast<unsigned int *>(encr_sbuf), nitems, k_s, k_n);
 #else
-	encryption::__decrypt2_naive<int *>(reinterpret_cast<int *>(encr_sbuf), nitems, k_s, k_n);
+	encryption::decrypt_int_sum_naive(reinterpret_cast<unsigned int *>(encr_sbuf), nitems, k_s, k_n);
 #endif
     }
 
