@@ -34,16 +34,23 @@ struct HearState
 
 private:
 
-    std::vector<std::vector<encryption::encr_key_t>> _k_s_storage;
-    std::unordered_map<MPI_Comm, std::vector<encryption::encr_key_t> *> _k_s_map;
-    std::vector<encryption::encr_key_t> _k_n_storage;
-    std::unordered_map<MPI_Comm, encryption::encr_key_t *> _k_n_map;
+    std::vector<std::vector<unsigned int>> _k_s_storage;
+    std::unordered_map<MPI_Comm, std::vector<unsigned int> *> _k_s_map;
+    std::vector<unsigned int> _k_n_storage;
+    std::unordered_map<MPI_Comm, unsigned int *> _k_n_map;
 
-    /* MPI_INT */
-    std::function<void(int *, const int *, int, int, std::vector<encryption::encr_key_t> &, encryption::encr_key_t, bool)> encrypt_block_int;
-    std::function<void(int *, int, std::vector<encryption::encr_key_t> &, encryption::encr_key_t)> decrypt_block_int;
+    /* MPI_INT + MPI_SUM */
+    std::function<void(unsigned int *, const unsigned int *, int, int, std::vector<unsigned int> &, unsigned int, bool)> encrypt_block_int_sum;
+    std::function<void(unsigned int *, int, std::vector<unsigned int> &, unsigned int)> decrypt_block_int_sum;
 
-    std::function<encryption::encr_key_t(encryption::encr_key_t)> prng;
+    /* MPI_INT + MPI_PROD */
+    std::function<void(unsigned int *, const unsigned int *, int, int, std::vector<unsigned int> &, unsigned int, bool)> encrypt_block_int_prod;
+    std::function<void(unsigned int *, int, std::vector<unsigned int> &, unsigned int)> decrypt_block_int_prod;
+
+    /* MPI_FLOAT + MPI_SUM*/
+    std::function<void(float *, const float *, int, int, std::vector<unsigned int> &, unsigned int)> encrypt_block_float_sum;
+    std::function<void(float *, int, std::vector<unsigned int> &, unsigned int)> decrypt_block_float_sum;
+    std::function<unsigned int(unsigned int)> prng;
 
 #ifdef USE_MPOOL
     mpool::SbufMpool _sbuf_mpool;
@@ -81,17 +88,21 @@ HearState::HearState(
     : _sbuf_mpool(mpool_size, mpool_sbuf_len)
 #endif
 {
-    this->encrypt_block_int = encryption::__encrypt2_naive<int *, const int *>;
-    this->decrypt_block_int = encryption::__decrypt2_naive<int *>;
+    this->encrypt_block_int_sum = encryption::encrypt_int_sum_naive;
+    this->decrypt_block_int_sum = encryption::decrypt_int_sum_naive;
+    this->encrypt_block_float_sum = encryption::encrypt_float_sum_naive;
+    this->decrypt_block_float_sum = encryption::decrypt_float_sum_naive;
+    this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
+    this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
     this->prng = encryption::prng;
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
-        this->encrypt_block_int = encryption::__encrypt2_aesni128<int *, const int*>;
-	this->decrypt_block_int = encryption::__decrypt2_aesni128<int *>;
+        this->encrypt_block_int_sum = encryption::encrypt_int_sum_aesni128;
+	this->decrypt_block_int_sum = encryption::decrypt_int_sum_aesni128;
 	this->prng = encryption::aesni128_prng;
     }
-#endif    
+#endif
 }
 
 
@@ -114,14 +125,15 @@ inline int HearState::insert_new_comm(MPI_Comm comm)
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
 
-    hear->_k_s_storage.push_back(std::vector<encryption::encr_key_t>(comm_size, my_rank));
-    hear->_k_s_storage.back()[my_rank] = encryption::generate_encr_key();
+    hear->_k_s_storage.push_back(std::vector<unsigned int>(comm_size, my_rank));
+    hear->_k_s_storage.back()[my_rank] = static_cast<unsigned int>(encryption::encr_noise_generator());
     hear->_k_s_map.insert({comm, &hear->_k_s_storage.back()});
     ret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, (*(hear->_k_s_map[comm])).data(), 1, MPI_UNSIGNED, comm);
     if (ret != MPI_SUCCESS)
         return ret;
 
-    hear->_k_n_storage.push_back(my_rank == root_rank ? encryption::generate_encr_key() : 42);
+    hear->_k_n_storage.push_back(my_rank == root_rank ?
+				 static_cast<unsigned int>(encryption::encr_noise_generator()) : 42);
     hear->_k_n_map.insert({comm, &hear->_k_n_storage.back()});
     ret = MPI_Bcast(hear->_k_n_map[comm], 1, MPI_UNSIGNED, root_rank, comm);
     if (ret != MPI_SUCCESS)
@@ -150,39 +162,77 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
     assert(sbuf_len <= mpool_sbuf_len);
     encr_sbuf = _sbuf_mpool.acquire_buf();
 #endif
-    if (encr_sbuf == nullptr) {
+    if (encr_sbuf == nullptr)
         return nullptr;
-    }
 
     /* 3ncrypt10n */
-    if (datatype == MPI_INT) {
-	this->encrypt_block_int(reinterpret_cast<int *>(encr_sbuf),
-				reinterpret_cast<const int *>(sendbuf), count, my_rank,
-				*hear->_k_s_map[comm], *hear->_k_n_map[comm],
-				my_rank == (comm_size - 1) ? 1 : 0);
+    if (op == MPI_SUM) {
+	if (datatype == MPI_INT) {
+	    this->encrypt_block_int_sum(reinterpret_cast<unsigned int *>(encr_sbuf),
+					reinterpret_cast<const unsigned int *>(sendbuf), count, my_rank,
+					*hear->_k_s_map[comm], *hear->_k_n_map[comm],
+					my_rank == (comm_size - 1) ? 1 : 0);
+
+	} else if (datatype == MPI_FLOAT) {
+	    this->encrypt_block_float_sum(reinterpret_cast<float *>(encr_sbuf),
+					  reinterpret_cast<const float *>(sendbuf), count, my_rank,
+					  *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	} else {
+	    std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
+	    goto fail_cleanup;
+	}
+    } else if (op == MPI_PROD) {
+	if (datatype == MPI_INT) {
+	    this->encrypt_block_int_prod(reinterpret_cast<unsigned int *>(encr_sbuf),
+					 reinterpret_cast<const unsigned int *>(sendbuf), count, my_rank,
+					 *hear->_k_s_map[comm], *hear->_k_n_map[comm],
+					 my_rank == (comm_size - 1) ? 1 : 0);
+	} else {
+	    std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
+	    goto fail_cleanup;
+	}
     } else {
-        std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
-#ifndef USE_MPOOL
-        delete[] reinterpret_cast<char *>(encr_sbuf);
-#else
-        _sbuf_mpool.release_buf(encr_sbuf);
-#endif
-        return nullptr;
+	std::cerr << "Encryption for this MPI op is not supported!" << std::endl;
+	goto fail_cleanup;
     }
 
     return encr_sbuf;
+
+fail_cleanup:
+#ifndef USE_MPOOL
+    delete[] reinterpret_cast<char *>(encr_sbuf);
+#else
+    _sbuf_mpool.release_buf(encr_sbuf);
+#endif
+    return nullptr;
 }
 
 inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
                                       MPI_Op op, MPI_Comm comm)
 {
     /* d3crypt10n */
-    if (datatype == MPI_INT) {
-	this->decrypt_block_int(reinterpret_cast<int *>(recvbuf), count,
-				*hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+    if (op == MPI_SUM) {
+	if (datatype == MPI_INT) {
+	    this->decrypt_block_int_sum(reinterpret_cast<unsigned int *>(recvbuf), count,
+					*hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	} else if (datatype == MPI_FLOAT) {
+	    this->decrypt_block_float_sum(reinterpret_cast<float *>(recvbuf), count,
+					  *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	} else {
+	    std::cerr << "Decryption for this MPI datatype is not supported!" << std::endl;
+	    return MPI_ERR_TYPE;
+	}
+    } else if (op == MPI_PROD) {
+	if (datatype == MPI_INT) {
+	    this->decrypt_block_int_prod(reinterpret_cast<unsigned int *>(recvbuf), count,
+					 *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+	} else {
+	    std::cerr << "Decryption for this MPI datatype is not supported!" << std::endl;
+	    return MPI_ERR_TYPE;
+	}
     } else {
-        std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
-        return MPI_ERR_TYPE;
+	std::cerr << "Decryption for this MPI op is not supported!" << std::endl;
+	return MPI_ERR_TYPE;
     }
 
     return MPI_SUCCESS;
@@ -216,8 +266,8 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     int dtype_size;
     int ret;
 
-    if ((datatype != MPI_INT) && (op != MPI_SUM))
-        return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+    if (((op != MPI_SUM) && (op != MPI_PROD)) || ((datatype != MPI_INT) && (datatype != MPI_FLOAT)))
+            return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
 
     MPI_Type_size(datatype, &dtype_size);
 

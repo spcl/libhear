@@ -4,12 +4,79 @@
 
 namespace encryption {
 
+std::mt19937 encr_noise_generator;
+
+void encrypt_int_sum_naive(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+			   std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+{
+    unsigned int tmp1 = k_n + k_s[rank];
+    unsigned int tmp2 = k_n + k_s[rank + 1];
+
+    if (!is_edge) {
+	for (unsigned int i = 0; i < count; i++) {
+	    encr_sbuf[i] = sbuf[i] + prng(tmp1 + i) - prng(tmp2 + i);
+	}
+    } else {
+	for (unsigned int i = 0; i < count; i++) {
+	    encr_sbuf[i] = sbuf[i] + prng(tmp1 + i);
+	}
+    }
+}
+
+void decrypt_int_sum_naive(unsigned int *rbuf, int count,
+			   std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int tmp = k_n + k_s[0];
+
+    for (unsigned int i = 0; i < count; i++) {
+	rbuf[i] = rbuf[i] - prng(tmp + i);
+    }
+}
+
+void encrypt_int_prod_naive(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+			   std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+{
+    /* Implement me */
+}
+
+void decrypt_int_prod_naive(unsigned int *rbuf, int count,
+			    std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    /* Implement me */
+}
+
+void encrypt_float_sum_naive(float *encr_sbuf, const float *sbuf, int count, int rank,
+			     std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    /* Implement me */
+}
+
+void decrypt_float_sum_naive(float *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    /* Implement me */
+}
+
 #ifdef AESNI
 
-__m128i key_schedule[11];
+static __m128i key_schedule[11];
 
 #define AESNI128_KEY_EXPAND(k, rcon) \
     (aesni128_key_expand(k, _mm_aeskeygenassist_si128(k, rcon)))
+
+#define AESNI128_ENC_BLOCK(m, n, k)	    \
+    do {				    \
+        n = _mm_xor_si128(m, k[0]);	    \
+        n = _mm_aesenc_si128(m, k[1]);	    \
+        n = _mm_aesenc_si128(m, k[2]);	    \
+        n = _mm_aesenc_si128(m, k[3]);	    \
+        n = _mm_aesenc_si128(m, k[4]);	    \
+        n = _mm_aesenc_si128(m, k[5]);	    \
+        n = _mm_aesenc_si128(m, k[6]);	    \
+        n = _mm_aesenc_si128(m, k[7]);	    \
+        n = _mm_aesenc_si128(m, k[8]);	    \
+        n = _mm_aesenc_si128(m, k[9]);	    \
+        n = _mm_aesenclast_si128(m, k[10]); \
+    } while (0)
 
 static __m128i aesni128_key_expand(__m128i key, __m128i keygened)
 {
@@ -31,7 +98,7 @@ static void aesni128_encrypt_m128i(char *plain_text, char *cipher_text)
     _mm_storeu_si128(reinterpret_cast<__m128i *>(cipher_text), res);
 }
 
-encr_key_t aesni128_prng(encr_key_t k_n)
+unsigned int aesni128_prng(unsigned int k_n)
 {
     unsigned int tmp[4] = {k_n, 0, 0, 0};
     assert(sizeof(unsigned int) == 4);
@@ -54,17 +121,54 @@ void aesni128_load_key(char *enc_key)
     key_schedule[10] = AESNI128_KEY_EXPAND(key_schedule[9], 0x36);
 }
 
-#endif
-
-const encr_key_t max_encr_key = 42; // std::numeric_limits<encr_key_t>::max();
-std::random_device rd {};
-std::mt19937 encr_key_generator(rd());
-std::mt19937 encr_noise_generator;
-std::uniform_int_distribution<encr_key_t> encr_key_distr(0, max_encr_key);
-
-encr_key_t generate_encr_key()
+void encrypt_int_sum_aesni128(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+			      std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
 {
-    return encr_key_distr(encr_key_generator);
+    unsigned int tmp1 = k_n + k_s[rank];
+    unsigned int tmp2 = k_n + k_s[rank + 1];
+    __m128i ind1 = _mm_set_epi32(3 + tmp1, 2 + tmp1, 1 + tmp1, tmp1);
+    __m128i ind2 = _mm_set_epi32(3 + tmp2, 2 + tmp2, 1 + tmp2, tmp2);
+    __m128i incr = _mm_set_epi32(4, 4, 4, 4);
+    __m128i encr_sbuf_vec, noise1, noise2;
+
+    if (!is_edge) {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    encr_sbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(sbuf + i));
+	    AESNI128_ENC_BLOCK(ind1, noise1, key_schedule);
+	    AESNI128_ENC_BLOCK(ind2, noise2, key_schedule);
+	    encr_sbuf_vec = _mm_add_epi32(encr_sbuf_vec, noise1);
+	    encr_sbuf_vec = _mm_sub_epi32(encr_sbuf_vec, noise2);
+	    _mm_store_si128(reinterpret_cast<__m128i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm_add_epi32(ind1, incr);
+	    ind2 = _mm_add_epi32(ind2, incr);
+	}
+    } else {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    encr_sbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(sbuf + i));
+	    AESNI128_ENC_BLOCK(ind1, noise1, key_schedule);
+	    encr_sbuf_vec = _mm_add_epi32(encr_sbuf_vec, noise1);
+	    _mm_store_si128(reinterpret_cast<__m128i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm_add_epi32(ind1, incr);
+	}
+    }
 }
+
+void decrypt_int_sum_aesni128(unsigned int *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int tmp = k_n + k_s[0];
+    __m128i ind  = _mm_set_epi32(3 + tmp, 2 + tmp, 1 + tmp, tmp);
+    __m128i incr = _mm_set_epi32(4, 4, 4, 4);
+    __m128i decr_rbuf_vec, noise;
+
+    for (unsigned int i = 0; i < count; i+=4) {
+	decr_rbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(rbuf + i));
+	AESNI128_ENC_BLOCK(ind, noise, key_schedule);
+	decr_rbuf_vec = _mm_sub_epi32(decr_rbuf_vec, noise);
+	_mm_store_si128(reinterpret_cast<__m128i*>(rbuf + i), decr_rbuf_vec);
+	ind = _mm_add_epi32(ind, incr);
+    }
+}
+
+#endif
 
 }
