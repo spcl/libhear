@@ -12,6 +12,17 @@
 #define DEBUG false
 #define ROUNDING MPFR_RNDN
 
+void shuffle(mpfr_t *array, size_t size) {
+  // Shuffles the array
+  for (size_t i = size - 1; i > 0; i--) {
+    int j = rand() % (i + 1);
+    mpfr_t temp;
+    mpfr_init_set(temp, array[i], ROUNDING);
+    mpfr_set(array[i], array[j], ROUNDING);
+    mpfr_set(array[j], temp, ROUNDING);
+  }
+}
+
 void true_random(mpfr_t *random_number, gmp_randstate_t random_state, int exponent_length) {
   // Set mantissa
   mpfr_urandomb(*random_number, random_state);
@@ -85,28 +96,43 @@ int main (int argc, char *argv[]) {
     gmp_randseed_ui(random_state, 42);
 
     // Initialize relevant variables
+    srand(42);
     int precision = precisions[index];
-    mpfr_t original_sum, HEAR_sum, true_sum, random_number, encrypted_error, original_error, noise;
-    mpfr_init2(noise, precision);
-    mpfr_set_ui(noise, 0.0, ROUNDING);
-    while (!mpfr_cmp_d(noise, 0.0))
-      true_random(&noise, random_state, 10);
-    mpfr_inits2(PRECISE_PRECISION, true_sum, encrypted_error, original_error, NULL);
-    mpfr_inits2(precision, original_sum, HEAR_sum, random_number, NULL);
+    mpfr_t original_product, HEAR_product, true_product, random_number, encrypted_error, original_error;
+    mpfr_t noises[test_step_size];
+    mpfr_t decryption_noise;
+
+    // Generate noises
+    for (int step = test_step_size - 1; step >= 0; step--) {
+      mpfr_init2(noises[step], precision);
+      mpfr_set_ui(noises[step], 0.0, ROUNDING);
+      while (!mpfr_cmp_d(noises[step], 0.0))
+        true_random(noises + step, random_state, 10);
+    }
+    mpfr_init_set(decryption_noise, noises[0], ROUNDING);
+
+    // Normalize noises
+    for (int step = 0; step < test_step_size - 1; step++) {
+      mpfr_div(noises[step], noises[step], noises[step + 1], ROUNDING);
+    }
+    shuffle(noises, test_step_size);
+    mpfr_inits2(PRECISE_PRECISION, true_product, encrypted_error, original_error, NULL);
+    mpfr_inits2(precision, original_product, HEAR_product, random_number, NULL);
 
     // Prepare file for saving results
-    char filename[100] = {'\0'};
-    sprintf(filename, "./results/%d_float_addition_%s.csv", precision, name);
+    char filename[200] = {'\0'};
+    sprintf(filename, "./results/%d_float_multiplication_%s.csv", precision, name);
     FILE *results;
-    results = fopen(filename, "w");
+    results=fopen(filename, "w");
+    fprintf(results, "error,type\n");
 
     for (size_t i = 0; i < test_size; i++) {
       // Reset variables
-      mpfr_set_ui(true_sum, 0.0, ROUNDING);
-      mpfr_set_ui(original_sum, 0.0, ROUNDING);
-      mpfr_set_ui(HEAR_sum, 0.0, ROUNDING);
+      mpfr_set_ui(true_product, 1.0, ROUNDING);
+      mpfr_set_ui(original_product, 1.0, ROUNDING);
+      mpfr_set_ui(HEAR_product, 1.0, ROUNDING);
 
-      // Conduct the summation
+      // Conduct the product
       for (size_t j = 0; j < test_step_size; j++) {
         if (mode == RANDOM)
           true_random(&random_number, random_state, 10);
@@ -114,27 +140,27 @@ int main (int argc, char *argv[]) {
           uniform_random(&random_number, random_state, low, high);
         else if (mode == GAUSSIAN)
           gaussian_random(&random_number, random_state, sigma, mu);
-        mpfr_add(true_sum, true_sum, random_number, ROUNDING);
-        mpfr_add(original_sum, original_sum, random_number, ROUNDING);
-        mpfr_mul(random_number, random_number, noise, ROUNDING);
-        mpfr_add(HEAR_sum, HEAR_sum, random_number, ROUNDING);
+        mpfr_mul(true_product, true_product, random_number, ROUNDING);
+        mpfr_mul(original_product, original_product, random_number, ROUNDING);
+        mpfr_mul(random_number, random_number, noises[j], ROUNDING);
+        mpfr_mul(HEAR_product, HEAR_product, random_number, ROUNDING);
       }
 
       // Decrypt and compare the results
-      mpfr_div(HEAR_sum, HEAR_sum, noise, ROUNDING);
-      mpfr_sub(encrypted_error, HEAR_sum, true_sum, ROUNDING);
-      mpfr_div(encrypted_error, encrypted_error, true_sum, ROUNDING);
+      mpfr_div(HEAR_product, HEAR_product, decryption_noise, ROUNDING);
+      mpfr_sub(encrypted_error, HEAR_product, true_product, ROUNDING);
+      mpfr_div(encrypted_error, encrypted_error, true_product, ROUNDING);
       mpfr_abs(encrypted_error, encrypted_error, ROUNDING);
-      mpfr_sub(original_error, original_sum, true_sum, ROUNDING);
-      mpfr_div(original_error, original_error, true_sum, ROUNDING);
+      mpfr_sub(original_error, original_product, true_product, ROUNDING);
+      mpfr_div(original_error, original_error, true_product, ROUNDING);
       mpfr_abs(original_error, original_error, ROUNDING);
 
       // Save the results if the original sum is not infinite
       if (mpfr_number_p(original_error)) {
         mpfr_out_str(results, 10, 0, encrypted_error, ROUNDING);
-        fprintf(results, ", HEAR\n");
+        fprintf(results, ",HEAR\n");
         mpfr_out_str(results, 10, 0, original_error, ROUNDING);
-        fprintf(results, ", native\n");
+        fprintf(results, ",Native\n");
       }
       if (DEBUG) {
         double encrypted_error_d = log2(mpfr_get_d(encrypted_error, ROUNDING));
