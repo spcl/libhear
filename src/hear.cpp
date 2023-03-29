@@ -9,6 +9,10 @@
 
 #include <mpi.h>
 
+#ifdef PAPI_PROFILE
+#include <papi.h>
+#endif
+
 #include "encrypt.hpp"
 #include "hear.hpp"
 
@@ -94,7 +98,7 @@ HearState::HearState(
     this->decrypt_block_float_sum = encryption::decrypt_float_sum_naive;
     this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
     this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
-    this->prng = encryption::prng;
+    this->prng = encryption::prng_uint;
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
@@ -150,11 +154,19 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
     int sbuf_len;
     int comm_size;
     int my_rank;
+#ifdef PAPI_PROFILE
+    int retval;
+#endif
 
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
     MPI_Type_size(datatype, &type_size);
     sbuf_len = count * type_size;
+
+#ifdef PAPI_PROFILE
+    retval = PAPI_hl_region_begin("intermediate_buf_alloc");
+    assert(retval == PAPI_OK);
+#endif
 
 #ifndef USE_MPOOL
     encr_sbuf = new char[sbuf_len];
@@ -164,6 +176,14 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 #endif
     if (encr_sbuf == nullptr)
         return nullptr;
+
+#ifdef PAPI_PROFILE
+    retval = PAPI_hl_region_end("intermediate_buf_alloc");
+    assert(retval == PAPI_OK);
+
+    retval = PAPI_hl_region_begin("buf_encryption");
+    assert(retval == PAPI_OK);
+#endif
 
     /* 3ncrypt10n */
     if (op == MPI_SUM) {
@@ -196,6 +216,11 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 	goto fail_cleanup;
     }
 
+#ifdef PAPI_PROFILE
+    retval = PAPI_hl_region_end("buf_encryption");
+    assert(retval == PAPI_OK);
+#endif
+
     return encr_sbuf;
 
 fail_cleanup:
@@ -210,6 +235,12 @@ fail_cleanup:
 inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
                                       MPI_Op op, MPI_Comm comm)
 {
+#ifdef PAPI_PROFILE
+    int retval;
+    retval = PAPI_hl_region_begin("buf_decryption");
+    assert(retval == PAPI_OK);
+#endif
+
     /* d3crypt10n */
     if (op == MPI_SUM) {
 	if (datatype == MPI_INT) {
@@ -235,16 +266,30 @@ inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype dat
 	return MPI_ERR_TYPE;
     }
 
+#ifdef PAPI_PROFILE
+    retval = PAPI_hl_region_end("buf_decryption");
+    assert(retval == PAPI_OK);
+#endif
+
     return MPI_SUCCESS;
 }
 
 inline void HearState::release_memory(void *buf)
 {
+#ifdef PAPI_PROFILE
+    int retval;
+    retval = PAPI_hl_region_begin("intermediate_buf_free");
+    assert(retval == PAPI_OK);
+#endif
     assert(buf);
 #ifndef USE_MPOOL
     delete[] static_cast<char *>(buf);
 #else
     _sbuf_mpool.release_buf(buf);
+#endif
+#ifdef PAPI_PROFILE
+    retval = PAPI_hl_region_end("intermediate_buf_free");
+    assert(retval == PAPI_OK);
 #endif
 }
 
@@ -266,8 +311,27 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     int dtype_size;
     int ret;
 
+#ifdef BASELINE_ALLREDUCE
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_begin("baseline_allreduce");
+    assert(ret == PAPI_OK);
+#endif
+    ret = PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+    assert(ret == MPI_SUCCESS);
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_end("baseline_allreduce");
+    assert(ret == PAPI_OK);
+#endif
+    return MPI_SUCCESS;
+#endif
+
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_begin("hear_allreduce");
+    assert(ret == PAPI_OK);
+#endif
+
     if (((op != MPI_SUM) && (op != MPI_PROD)) || ((datatype != MPI_INT) && (datatype != MPI_FLOAT)))
-            return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+	return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
 
     MPI_Type_size(datatype, &dtype_size);
 
@@ -292,9 +356,17 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     if (encr_sendbuf == nullptr)
         return MPI_ERR_BUFFER;
 
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_begin("communication");
+    assert(ret == PAPI_OK);
+#endif
     ret = PMPI_Allreduce(encr_sendbuf, recvbuf, count, datatype, op, comm);
     if (ret != MPI_SUCCESS)
         goto cleanup;
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_end("communication");
+    assert(ret == PAPI_OK);
+#endif
 
     ret = hear->decrypt_recvbuf(recvbuf, count, datatype, op, comm);
     if (ret != MPI_SUCCESS)
@@ -317,7 +389,11 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     }
 
     while (total_count) {
-        ret = PMPI_Iallreduce(encr_sendbuf, reinterpret_cast<char *>(recvbuf) + cur_offset, cur_count,
+#ifdef PAPI_PROFILE
+	retval = PAPI_hl_region_begin("communication");
+	assert(ret == PAPI_OK);
+#endif
+	ret = PMPI_Iallreduce(encr_sendbuf, reinterpret_cast<char *>(recvbuf) + cur_offset, cur_count,
                               datatype, op, comm, &req);
         if (ret != MPI_SUCCESS)
             goto cleanup;
@@ -345,7 +421,10 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
         }
 
         PMPI_Wait(&req, MPI_STATUS_IGNORE);
-
+#ifdef PAPI_PROFILE
+	retval = PAPI_hl_region_end("communication");
+	assert(ret == PAPI_OK);
+#endif
         prev_count = cur_count;
         prev_offset = cur_offset;
 
@@ -364,7 +443,10 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 #ifdef DCHECK
     assert(!std::memcmp(valid_rbuf, recvbuf, dtype_size * count));
 #endif
-
+#ifdef PAPI_PROFILE
+    ret = PAPI_hl_region_end("hear_allreduce");
+    assert(ret == PAPI_OK);
+#endif
     return MPI_SUCCESS;
 
 cleanup:

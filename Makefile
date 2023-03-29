@@ -6,7 +6,7 @@ TESTS_DIR = $(shell pwd)/tests/
 DEBUG_FLAGS = -g -O0 -lcrypto -lssl
 RELEASE_FLAGS = -O3 -ffast-math -march=native -lcrypto -lssl
 AES_FLAGS = -D AESNI=1 -maes -Wno-narrowing
-
+PAPI_FLAGS = -I /opt/cray/pe/papi/default/include/ -L /opt/cray/pe/papi/default/lib/ -lpapi -D PAPI_PROFILE=1
 LIBHEAR_CXX_FLAGS = -I$(INCLUDE_DIR)
 LIBHEAR_OBJS = mpool.po encrypt.po hear.po
 
@@ -16,8 +16,14 @@ LIBHEAR_OBJS = mpool.po encrypt.po hear.po
 libhear.so: $(LIBHEAR_OBJS)
 	$(MPICXX) $(LIBHEAR_CXX_FLAGS) -fPIC -shared -o $@ $(LIBHEAR_OBJS)
 
+hear_baseline : LIBHEAR_CXX_FLAGS += -D BASELINE_ALLREDUCE=1 $(PAPI_FLAGS)
+hear_baseline: $(LIBHEAR_OBJS) libhear.so
+
 hear_naive : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
 hear_naive : $(LIBHEAR_OBJS) libhear.so
+
+hear_naive_papi : LIBHEAR_CXX_FLAGS += $(PAPI_FLAGS)
+hear_naive_papi : hear_naive
 
 hear_mpool_only : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) -D USE_MPOOL=1
 hear_mpool_only : $(LIBHEAR_OBJS) libhear.so
@@ -27,6 +33,9 @@ hear_release :  $(LIBHEAR_OBJS) libhear.so
 
 hear_release_aes : LIBHEAR_CXX_FLAGS += $(AES_FLAGS)
 hear_release_aes : hear_release
+
+hear_release_aes_papi : LIBHEAR_CXX_FLAGS += $(PAPI_FLAGS)
+hear_release_aes_papi : hear_release_aes
 
 hear_debug : LIBHEAR_CXX_FLAGS += $(DEBUG_FLAGS) -D DCHECK=1
 hear_debug :  $(LIBHEAR_OBJS) libhear.so
