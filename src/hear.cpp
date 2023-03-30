@@ -94,7 +94,7 @@ HearState::HearState(
     this->decrypt_block_float_sum = encryption::decrypt_float_sum_naive;
     this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
     this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
-    this->prng = encryption::prng;
+    this->prng = encryption::prng_uint;
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
