@@ -14,11 +14,11 @@ void encrypt_int_sum_naive(unsigned int *encr_sbuf, const unsigned int *sbuf, in
 
     if (!is_edge) {
 	for (unsigned int i = 0; i < count; i++) {
-	    encr_sbuf[i] = sbuf[i] + prng(tmp1 + i) - prng(tmp2 + i);
+	    encr_sbuf[i] = sbuf[i] + prng_uint(tmp1 + i) - prng_uint(tmp2 + i);
 	}
     } else {
 	for (unsigned int i = 0; i < count; i++) {
-	    encr_sbuf[i] = sbuf[i] + prng(tmp1 + i);
+	    encr_sbuf[i] = sbuf[i] + prng_uint(tmp1 + i);
 	}
     }
 }
@@ -29,12 +29,108 @@ void decrypt_int_sum_naive(unsigned int *rbuf, int count,
     unsigned int tmp = k_n + k_s[0];
 
     for (unsigned int i = 0; i < count; i++) {
-	rbuf[i] = rbuf[i] - prng(tmp + i);
+	rbuf[i] = rbuf[i] - prng_uint(tmp + i);
+    }
+}
+
+void encrypt_int_sum_sha1sse2(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+			      std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+{
+    unsigned int tmp1 = k_n + k_s[rank];
+    unsigned int tmp2 = k_n + k_s[rank + 1];
+    __m128i ind1 = _mm_set_epi32(3 + tmp1, 2 + tmp1, 1 + tmp1, tmp1);
+    __m128i ind2 = _mm_set_epi32(3 + tmp2, 2 + tmp2, 1 + tmp2, tmp2);
+    __m128i incr = _mm_set_epi32(4, 4, 4, 4);
+    __m128i encr_sbuf_vec, noise1, noise2;
+
+    if (!is_edge) {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    encr_sbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(sbuf + i));
+	    noise1 = prng_m128(ind1);
+	    noise2 = prng_m128(ind2);
+	    encr_sbuf_vec = _mm_add_epi32(encr_sbuf_vec, noise1);
+	    encr_sbuf_vec = _mm_sub_epi32(encr_sbuf_vec, noise2);
+	    _mm_store_si128(reinterpret_cast<__m128i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm_add_epi32(ind1, incr);
+	    ind2 = _mm_add_epi32(ind2, incr);
+	}
+    } else {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    encr_sbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(sbuf + i));
+	    noise1 = prng_m128(ind1);
+	    encr_sbuf_vec = _mm_add_epi32(encr_sbuf_vec, noise1);
+	    _mm_store_si128(reinterpret_cast<__m128i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm_add_epi32(ind1, incr);
+	}
+    }
+}
+
+void decrypt_int_sum_sha1sse2(unsigned int *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int tmp = k_n + k_s[0];
+    __m128i ind  = _mm_set_epi32(3 + tmp, 2 + tmp, 1 + tmp, tmp);
+    __m128i incr = _mm_set_epi32(4, 4, 4, 4);
+    __m128i decr_rbuf_vec, noise;
+
+    for (unsigned int i = 0; i < count; i+=4) {
+	decr_rbuf_vec = _mm_load_si128(reinterpret_cast<const __m128i*>(rbuf + i));
+	noise = prng_m128(ind);
+	decr_rbuf_vec = _mm_sub_epi32(decr_rbuf_vec, noise);
+	_mm_store_si128(reinterpret_cast<__m128i*>(rbuf + i), decr_rbuf_vec);
+	ind = _mm_add_epi32(ind, incr);
+    }
+}
+
+void encrypt_int_sum_sha1avx2(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+			      std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+{
+    unsigned int tmp1 = k_n + k_s[rank];
+    unsigned int tmp2 = k_n + k_s[rank + 1];
+    __m256i ind1 = _mm256_set_epi32(7 + tmp1, 6 + tmp1, 5 + tmp1, 4 + tmp1, 3 + tmp1, 2 + tmp1, 1 + tmp1, tmp1);
+    __m256i ind2 = _mm256_set_epi32(7 + tmp1, 6 + tmp1, 5 + tmp1, 4 + tmp1, 3 + tmp1, 2 + tmp1, 1 + tmp1, tmp1);
+    __m256i incr = _mm256_set_epi32(8, 8, 8, 8, 8, 8, 8, 8);
+    __m256i encr_sbuf_vec, noise1, noise2;
+
+    if (!is_edge) {
+	for (unsigned int i = 0; i < count; i+=8) {
+	    encr_sbuf_vec = _mm256_load_si256(reinterpret_cast<const __m256i*>(sbuf + i));
+	    noise1 = prng_m256(ind1);
+	    noise2 = prng_m256(ind2);
+	    encr_sbuf_vec = _mm256_add_epi32(encr_sbuf_vec, noise1);
+	    encr_sbuf_vec = _mm256_sub_epi32(encr_sbuf_vec, noise2);
+	    _mm256_store_si256(reinterpret_cast<__m256i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm256_add_epi32(ind1, incr);
+	    ind2 = _mm256_add_epi32(ind2, incr);
+	}
+    } else {
+	for (unsigned int i = 0; i < count; i+=8) {
+	    encr_sbuf_vec = _mm256_load_si256(reinterpret_cast<const __m256i*>(sbuf + i));
+	    noise1 = prng_m256(ind1);
+	    encr_sbuf_vec = _mm256_add_epi32(encr_sbuf_vec, noise1);
+	    _mm256_store_si256(reinterpret_cast<__m256i*>(encr_sbuf + i), encr_sbuf_vec);
+	    ind1 = _mm256_add_epi32(ind1, incr);
+	}
+    }
+}
+
+void decrypt_int_sum_sha1avx2(unsigned int *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int tmp = k_n + k_s[0];
+    __m256i ind  = _mm256_set_epi32(7 + tmp, 6 + tmp, 5 + tmp, 4 + tmp, 3 + tmp, 2 + tmp, 1 + tmp, tmp);
+    __m256i incr = _mm256_set_epi32(8, 8, 8, 8, 8, 8, 8, 8);
+    __m256i decr_rbuf_vec, noise;
+
+    for (unsigned int i = 0; i < count; i+=8) {
+	decr_rbuf_vec = _mm256_load_si256(reinterpret_cast<const __m256i*>(rbuf + i));
+	noise = prng_m256(ind);
+	decr_rbuf_vec = _mm256_sub_epi32(decr_rbuf_vec, noise);
+	_mm256_store_si256(reinterpret_cast<__m256i*>(rbuf + i), decr_rbuf_vec);
+	ind = _mm256_add_epi32(ind, incr);
     }
 }
 
 void encrypt_int_prod_naive(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
-			   std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+			    std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
 {
     /* Implement me */
 }

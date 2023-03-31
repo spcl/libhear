@@ -12,7 +12,7 @@ struct SbufMpool
 private:
 
     size_t _buf_len;
-    std::list<char *> _mpool;
+    std::list<void *> _mpool;
 
     void cleanup();
 

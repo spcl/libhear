@@ -9,6 +9,12 @@
 
 #include <mpi.h>
 
+#ifdef TSC_PROF
+#include "tsc_x86.hpp"
+#define TSC_NUM_MEASUREMENTS 10000000
+#define TSC_WARMUP_CUTOFF 200
+#endif
+
 #include "encrypt.hpp"
 #include "hear.hpp"
 
@@ -73,6 +79,13 @@ public:
     int decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
                         MPI_Op op, MPI_Comm comm);
 
+#ifdef TSC_PROF
+    std::vector<myInt64> tsc_comm;
+    std::vector<myInt64> tsc_mmalloc;
+    std::vector<myInt64> tsc_mfree;
+    std::vector<myInt64> tsc_encrypt;
+    std::vector<myInt64> tsc_decrypt;
+#endif
 };
 
 class HearState *hear;
@@ -94,7 +107,7 @@ HearState::HearState(
     this->decrypt_block_float_sum = encryption::decrypt_float_sum_naive;
     this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
     this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
-    this->prng = encryption::prng;
+    this->prng = encryption::prng_uint;
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
@@ -103,12 +116,60 @@ HearState::HearState(
 	this->prng = encryption::aesni128_prng;
     }
 #endif
+
+#ifdef TSC_PROF
+    init_tsc();
+    tsc_comm.reserve(TSC_NUM_MEASUREMENTS);
+    tsc_mmalloc.reserve(TSC_NUM_MEASUREMENTS);
+    tsc_mfree.reserve(TSC_NUM_MEASUREMENTS);
+    tsc_encrypt.reserve(TSC_NUM_MEASUREMENTS);
+    tsc_decrypt.reserve(TSC_NUM_MEASUREMENTS);
+#endif
 }
 
+#ifdef TSC_PROF
+static myInt64 get_tsc_avg(std::vector<myInt64> &measurements, int comm_size)
+{
+    myInt64 sum = 0;
+    int counter = 0;
+
+    for (auto & val: measurements) {
+	if (counter++ < TSC_WARMUP_CUTOFF) {
+	    continue;
+	}
+	sum += val / comm_size;
+    }
+
+    return sum / (measurements.size() - TSC_WARMUP_CUTOFF);
+}
+#endif
 
 HearState::~HearState()
 {
+#ifdef TSC_PROF
+    int my_rank, comm_size;
 
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+    PMPI_Allreduce(MPI_IN_PLACE, tsc_comm.data(), tsc_comm.size(), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+    if (my_rank == 0) {
+	std::cout << "comm=" << get_tsc_avg(tsc_comm, comm_size) << std::endl;
+    }
+#ifndef ALLREDUCE_BASELINE
+    PMPI_Allreduce(MPI_IN_PLACE, tsc_mmalloc.data(), tsc_mmalloc.size(), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+    PMPI_Allreduce(MPI_IN_PLACE, tsc_mfree.data(), tsc_mfree.size(), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+    PMPI_Allreduce(MPI_IN_PLACE, tsc_encrypt.data(), tsc_encrypt.size(), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+    PMPI_Allreduce(MPI_IN_PLACE, tsc_decrypt.data(), tsc_decrypt.size(), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+    if (my_rank == 0) {
+	std::cout << "mmalloc=" << get_tsc_avg(tsc_mmalloc, comm_size) << std::endl;
+	std::cout << "mfree=" << get_tsc_avg(tsc_mfree, comm_size) << std::endl;
+	std::cout << "encrypt=" << get_tsc_avg(tsc_encrypt, comm_size) << std::endl;
+	std::cout << "decrypt=" << get_tsc_avg(tsc_decrypt, comm_size) << std::endl;
+    }
+#endif
+
+#endif
 }
 
 inline void HearState::update_k_n(MPI_Comm comm)
@@ -156,14 +217,25 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
     MPI_Type_size(datatype, &type_size);
     sbuf_len = count * type_size;
 
+#ifdef TSC_PROF
+    myInt64 t_mmalloc = start_tsc();
+#endif
+
 #ifndef USE_MPOOL
     encr_sbuf = new char[sbuf_len];
 #else
-    assert(sbuf_len <= mpool_sbuf_len);
     encr_sbuf = _sbuf_mpool.acquire_buf();
 #endif
     if (encr_sbuf == nullptr)
         return nullptr;
+
+#ifdef TSC_PROF
+    hear->tsc_mmalloc.push_back(stop_tsc(t_mmalloc));
+#endif
+
+#ifdef TSC_PROF
+    myInt64 t_encrypt = start_tsc();
+#endif
 
     /* 3ncrypt10n */
     if (op == MPI_SUM) {
@@ -196,6 +268,10 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 	goto fail_cleanup;
     }
 
+#ifdef TSC_PROF
+    hear->tsc_encrypt.push_back(stop_tsc(t_encrypt));
+#endif
+
     return encr_sbuf;
 
 fail_cleanup:
@@ -210,6 +286,10 @@ fail_cleanup:
 inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype datatype,
                                       MPI_Op op, MPI_Comm comm)
 {
+#ifdef TSC_PROF
+    myInt64 t_decrypt = start_tsc();
+#endif
+
     /* d3crypt10n */
     if (op == MPI_SUM) {
 	if (datatype == MPI_INT) {
@@ -235,16 +315,26 @@ inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype dat
 	return MPI_ERR_TYPE;
     }
 
+#ifdef TSC_PROF
+    hear->tsc_decrypt.push_back(stop_tsc(t_decrypt));
+#endif
+
     return MPI_SUCCESS;
 }
 
 inline void HearState::release_memory(void *buf)
 {
+#ifdef TSC_PROF
+    myInt64 t_free = start_tsc();
+#endif
     assert(buf);
 #ifndef USE_MPOOL
     delete[] static_cast<char *>(buf);
 #else
     _sbuf_mpool.release_buf(buf);
+#endif
+#ifdef TSC_PROF
+    hear->tsc_mfree.push_back(stop_tsc(t_free));
 #endif
 }
 
@@ -265,6 +355,17 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     void *encr_sendbuf;
     int dtype_size;
     int ret;
+
+#ifdef ALLREDUCE_BASELINE
+#ifdef TSC_PROF
+    myInt64 t_baseline = start_tsc();
+#endif
+    ret = PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+#ifdef TSC_PROF
+    hear->tsc_comm.push_back(stop_tsc(t_baseline));
+#endif
+    return ret;
+#endif
 
     if (((op != MPI_SUM) && (op != MPI_PROD)) || ((datatype != MPI_INT) && (datatype != MPI_FLOAT)))
             return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
@@ -292,9 +393,15 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     if (encr_sendbuf == nullptr)
         return MPI_ERR_BUFFER;
 
+#ifdef TSC_PROF
+    myInt64 t_comm = start_tsc();
+#endif
     ret = PMPI_Allreduce(encr_sendbuf, recvbuf, count, datatype, op, comm);
     if (ret != MPI_SUCCESS)
         goto cleanup;
+#ifdef TSC_PROF
+    hear->tsc_comm.push_back(stop_tsc(t_comm));
+#endif
 
     ret = hear->decrypt_recvbuf(recvbuf, count, datatype, op, comm);
     if (ret != MPI_SUCCESS)
@@ -317,6 +424,9 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     }
 
     while (total_count) {
+#ifdef TSC_PROF
+	myInt64 t_comm = start_tsc();
+#endif
         ret = PMPI_Iallreduce(encr_sendbuf, reinterpret_cast<char *>(recvbuf) + cur_offset, cur_count,
                               datatype, op, comm, &req);
         if (ret != MPI_SUCCESS)
@@ -345,7 +455,9 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
         }
 
         PMPI_Wait(&req, MPI_STATUS_IGNORE);
-
+#ifdef TSC_PROF
+	hear->tsc_comm.push_back(stop_tsc(t_comm));
+#endif
         prev_count = cur_count;
         prev_offset = cur_offset;
 

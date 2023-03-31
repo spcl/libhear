@@ -1,5 +1,7 @@
 #include <iostream>
 #include <cassert>
+#include <unistd.h>
+#include <immintrin.h>
 
 #include "mpool.hpp"
 
@@ -8,10 +10,10 @@ namespace mpool {
 SbufMpool::SbufMpool(const size_t pool_size, const size_t buf_len)
     : _buf_len(buf_len)
 {
-    char *ptr;
+    void *ptr;
 
     for (auto i = 0; i < pool_size; i++) {
-        ptr = new char[buf_len];
+	ptr = _mm_malloc(buf_len, getpagesize());
         if (ptr == nullptr) {
             cleanup();
             std::cerr << "Failed to allocate memory for mpool" << std::endl;
@@ -29,10 +31,10 @@ SbufMpool::~SbufMpool()
 
 void SbufMpool::cleanup()
 {
-    char *ptr;
+    void *ptr;
 
-    while ((ptr = reinterpret_cast<char *>(acquire_buf())) != nullptr) {
-        delete[] ptr;
+    while ((ptr = acquire_buf()) != nullptr) {
+        _mm_free(ptr);
     }
 }
 
@@ -51,7 +53,7 @@ void* SbufMpool::acquire_buf()
 void SbufMpool::release_buf(void *buf)
 {
     assert(buf);
-    _mpool.push_back(reinterpret_cast<char *>(buf));
+    _mpool.push_back(buf);
 }
 
 }
