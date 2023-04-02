@@ -95,10 +95,11 @@ int main (int argc, char *argv[]) {
     mpfr_inits2(precision, original_sum, HEAR_sum, random_number, NULL);
 
     // Prepare file for saving results
-    char filename[100] = {'\0'};
+    char filename[200] = {'\0'};
     sprintf(filename, "./results/%d_float_addition_%s.csv", precision, name);
     FILE *results;
     results = fopen(filename, "w");
+    fprintf(results, "error,type\n");
 
     for (size_t i = 0; i < test_size; i++) {
       // Reset variables
@@ -132,9 +133,9 @@ int main (int argc, char *argv[]) {
       // Save the results if the original sum is not infinite
       if (mpfr_number_p(original_error)) {
         mpfr_out_str(results, 10, 0, encrypted_error, ROUNDING);
-        fprintf(results, ", HEAR\n");
+        fprintf(results, ",HEAR\n");
         mpfr_out_str(results, 10, 0, original_error, ROUNDING);
-        fprintf(results, ", native\n");
+        fprintf(results, ",native\n");
       }
       if (DEBUG) {
         double encrypted_error_d = log2(mpfr_get_d(encrypted_error, ROUNDING));
