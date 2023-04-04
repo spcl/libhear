@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+
 def parse_osu_measurements_from_file(filename):
     with open(filename, "r") as log:
         row = log.readlines()[-1]
@@ -17,6 +18,7 @@ def parse_osu_measurements_from_file(filename):
 
     # bytes,us,gigabytes,us,gigabytes,us,gigabytes
     return f"{avg_lat},{avg_tput},{min_lat},{min_tput},{max_lat},{max_tput}"
+
 
 def parse_cycles_measurements_from_file(filename):
     malloc = 0
@@ -40,6 +42,7 @@ def parse_cycles_measurements_from_file(filename):
 
     return f"{malloc},{encrypt},{comm},{decrypt},{free}"
 
+
 def postprocess_critical_path(logdir, dtype, op, modes, msgsizes, ntrials):
     with open(f"{logdir}/critical_path.csv", "w") as csv_out:
         csv_out.write("dtype,op,mode,msgsize,trial,malloc,encrypt,comm,decrypt,free\n")
@@ -51,6 +54,7 @@ def postprocess_critical_path(logdir, dtype, op, modes, msgsizes, ntrials):
                     print(filename)
                     data = parse_cycles_measurements_from_file(filename)
                     csv_out.write(f"{dtype},{op},{mode},{msg_size},{trial+1},{data}\n")
+
 
 def postprocess_block_size(logdir, dtype, op, modes, msgsizes, ntrials, ranks, block_sizes):
     with open(f"{logdir}/block_size.csv", "w") as csv_out:
@@ -72,6 +76,7 @@ def postprocess_block_size(logdir, dtype, op, modes, msgsizes, ntrials, ranks, b
                                 data = parse_osu_measurements_from_file(filename)
                                 csv_out.write(f"{dtype},{op},{mode},{nranks},{block_size},{msg_size},{trial+1},{data}\n")
 
+
 def postprocess_osu_allreduce(logdir, dtype, op, modes, small_msgsizes, large_msgsizes, ntrials, ranks, block_sizes):
     with open(f"{logdir}/osu_allreduce.csv", "w") as csv_out:
         csv_out.write("dtype,op,mode,nranks,block_size,msgsize,trial,avg_lat,avg_tput,min_lat,min_tput,max_lat,max_tput\n")
@@ -91,7 +96,7 @@ def postprocess_osu_allreduce(logdir, dtype, op, modes, small_msgsizes, large_ms
 
         for nranks in ranks:
             for mode in modes:
-                for msg_size in small_msgsizes + large_msgsizes:
+                for msg_size in large_msgsizes:
                     for block_size in block_sizes:
                         for trial in range(ntrials):
                             filename = f"{logdir}/osu_allreduce.{mode}.{nranks}.{msg_size}.{block_size}.{trial+1}.log"
@@ -103,13 +108,14 @@ def postprocess_osu_allreduce(logdir, dtype, op, modes, small_msgsizes, large_ms
                             data = parse_osu_measurements_from_file(filename)
                             csv_out.write(f"{dtype},{op},{mode},{nranks},{block_size},{msg_size},{trial+1},{data}\n")
 
+
 postprocess_critical_path(
-    logdir="/users/mkhalilo/hear/logs/",
+    logdir="/users/mkhalilo/hear/logs2/",
     dtype="int",
     op="sum",
     modes=["baseline", "naive", "optimized"],
     msgsizes=[8,16],
-    ntrials=2)
+    ntrials=5)
 
 postprocess_block_size(
     logdir="/users/mkhalilo/hear/logs/",
@@ -123,13 +129,13 @@ postprocess_block_size(
 )
 
 postprocess_osu_allreduce(
-    logdir="/users/mkhalilo/hear/logs/",
+    logdir="/users/mkhalilo/hear/logs3/",
     dtype="int",
     op="sum",
     modes=["baseline", "optimized"],
     small_msgsizes=[8,16],
     large_msgsizes=[8388608,16777216],
     ntrials=2,
-    ranks=[2,4,8,18,36,72],
+    ranks=[2,4,8,18,36,72,144,288,576,1152],
     block_sizes=[32768,65536,131072]
 )
