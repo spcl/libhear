@@ -18,7 +18,7 @@
 #define IEEE_DOUBLE_MANTISSA 52
 #define IEEE_DOUBLE_EXPONENT 11
 #define SHIFT (FLOAT_EXPONENT - IEEE_FLOAT_EXPONENT)
-
+#define DEBUG
 
 union HNumber {
   ieee754_float ieee_float;
@@ -98,20 +98,25 @@ int main() {
       uint32_t n = noise;
       h_float c = reinterpret_cast<h_float &>(noise);
       #ifdef DEBUG
-        cout_float(x[j]);
-        float initial_x = x[j];
+      std::cout << "Original float: " << std::endl;
+      cout_float(x[j]);
+      float initial_x = x[j];
       #endif
       #ifdef DEBUG
-        std::cout << c << std::endl;
+      std::cout << "Noise float: " << std::endl;
+      std::cout << c << std::endl;
       #endif
       c.encrypt(x[j]);
       #ifdef DEBUG
-        std::cout << c << std::endl;
-        std::cout << noise << " " << x[j] << " ";
+      std::cout << "Encrypted float: " << std::endl;
+      std::cout << c << std::endl;
       #endif
       c.decrypt(x[j], noise);
       #ifdef DEBUG
-        std::cout << x[j] << " " << (initial_x - x[j]) << std::endl;
+      std::cout << "Decrypted float: " << std::endl;
+      cout_float(x[j]);
+      std::cout << "Stats: " << std::endl;
+      std::cout << initial_x << " " << x[j] << " " << (initial_x - x[j]) << std::endl << std::endl;
       #endif
     }
     auto end = std::chrono::high_resolution_clock::now();
