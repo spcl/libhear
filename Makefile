@@ -50,6 +50,9 @@ encr_perf_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) $(AES_FLAGS)
 encr_perf_test : encrypt.po $(TESTS_DIR)/encryption_perf.cpp
 	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/encryption_perf.cpp encrypt.po
 
+hfloat_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+hfloat_test : hfloat.po $(TESTS_DIR)/hfloats_test.cpp
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/hfloats_test.cpp hfloat.po
 debug: hear_debug
 
 debug_aes: LIBHEAR_CXX_FLAGS += $(AES_FLAGS)
