@@ -26,11 +26,11 @@
 #ifdef USE_MPOOL
 #include "mpool.hpp"
 size_t mpool_size = 4;
-size_t mpool_sbuf_len = 65536;
+size_t mpool_sbuf_len = 8388608;
 #endif
 
 #ifdef USE_PIPELINING
-int pipelining_block_size = 8192;
+int pipelining_block_size = 65536;
 #endif
 
 const int root_rank = 0;
@@ -571,6 +571,20 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     std::cerr << "MPI_Comm_split() call interception" << std::endl;
 #endif
     ret = PMPI_Comm_split(comm, color, key, newcomm);
+    if (ret == MPI_SUCCESS)
+        ret = hear->insert_new_comm(*newcomm);
+
+    return ret;
+}
+
+int MPI_Comm_dup(MPI_Comm comm, MPI_Comm * newcomm)
+{
+    int ret;
+
+#ifdef DEBUG
+    std::cerr << "MPI_Comm_dup() call interception" << std::endl;
+#endif
+    ret = PMPI_Comm_dup(comm, newcomm);
     if (ret == MPI_SUCCESS)
         ret = hear->insert_new_comm(*newcomm);
 
