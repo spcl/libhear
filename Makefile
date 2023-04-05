@@ -3,7 +3,7 @@ MPICXX = CC
 INCLUDE_DIR = $(shell pwd)/include/
 SRC_DIR = $(shell pwd)/src/
 TESTS_DIR = $(shell pwd)/tests/
-DEBUG_FLAGS = -g -O0
+DEBUG_FLAGS = -g -O0 -lcrypto -lssl
 RELEASE_FLAGS = -O3 -ffast-math -march=native -lcrypto -lssl
 AES_FLAGS = -D AESNI=1 -maes -Wno-narrowing
 TSC_FLAGS= -D TSC_PROF=1
