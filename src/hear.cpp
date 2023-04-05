@@ -12,7 +12,7 @@
 #ifdef TSC_PROF
 #include "tsc_x86.hpp"
 #define TSC_NUM_MEASUREMENTS 10000000
-#define TSC_WARMUP_CUTOFF 200
+#define TSC_WARMUP_CUTOFF 200 /* similar to OSU benchmarks */
 #endif
 
 #include "encrypt.hpp"
@@ -113,6 +113,8 @@ HearState::HearState(
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
         this->encrypt_block_int_sum = encryption::encrypt_int_sum_aesni128;
 	this->decrypt_block_int_sum = encryption::decrypt_int_sum_aesni128;
+	this->encrypt_block_float_sum = encryption::encrypt_float_sum_aesni128_unroll;
+	this->decrypt_block_float_sum = encryption::decrypt_float_sum_aesni128_unroll;
 	this->prng = encryption::aesni128_prng;
     }
 #endif

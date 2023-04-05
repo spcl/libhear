@@ -3,7 +3,7 @@ MPICXX = CC
 INCLUDE_DIR = $(shell pwd)/include/
 SRC_DIR = $(shell pwd)/src/
 TESTS_DIR = $(shell pwd)/tests/
-DEBUG_FLAGS = -g -O0
+DEBUG_FLAGS = -g -O0 -lcrypto -lssl
 RELEASE_FLAGS = -O3 -ffast-math -march=native -lcrypto -lssl
 AES_FLAGS = -D AESNI=1 -maes -Wno-narrowing
 TSC_FLAGS= -D TSC_PROF=1
@@ -50,6 +50,9 @@ encr_perf_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) $(AES_FLAGS)
 encr_perf_test : encrypt.po $(TESTS_DIR)/encryption_perf.cpp
 	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/encryption_perf.cpp encrypt.po
 
+hfloat_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+hfloat_test : hfloat.po $(TESTS_DIR)/hfloats_test.cpp
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/hfloats_test.cpp hfloat.po
 debug: hear_debug
 
 debug_aes: LIBHEAR_CXX_FLAGS += $(AES_FLAGS)

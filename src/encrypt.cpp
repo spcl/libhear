@@ -1,6 +1,7 @@
 #include <cassert>
 
 #include "encrypt.hpp"
+#include "hfloat.hpp"
 
 namespace encryption {
 
@@ -144,12 +145,37 @@ void decrypt_int_prod_naive(unsigned int *rbuf, int count,
 void encrypt_float_sum_naive(float *encr_sbuf, const float *sbuf, int count, int rank,
 			     std::vector<unsigned int> &k_s, unsigned int k_n)
 {
-    /* Implement me */
+    signed int exponent;
+    HNumbers::HNumber hnum;
+
+    for (unsigned int i = 0; i < count; i++) {
+	hnum.native_float = prng_uint(k_n + i);
+	exponent = hnum.crypto.exponent;
+	hnum.ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	hnum.ieee_float.ieee.mantissa <<= SHIFT;
+	hnum.native_float *= sbuf[i];
+	hnum.crypto_simplified.remainder >>= SHIFT;
+	hnum.crypto.exponent += exponent - IEEE754_FLOAT_BIAS;
+	encr_sbuf[i] = hnum.native_float;
+    }
 }
 
 void decrypt_float_sum_naive(float *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n)
 {
-    /* Implement me */
+    HNumbers::HNumber hnum;
+    HNumbers::HNumber noise;
+
+    for (unsigned int i = 0; i < count; i++) {
+	noise.native_float = prng_uint(k_n + i);
+	hnum = reinterpret_cast<HNumbers::HNumber &>(rbuf[i]);
+	hnum.crypto.exponent -= noise.crypto.exponent;
+	hnum.crypto.exponent += IEEE754_FLOAT_BIAS;
+	hnum.crypto.exponent <<= SHIFT;
+	hnum.ieee_float.ieee.mantissa <<= SHIFT;
+	noise.ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	noise.ieee_float.ieee.mantissa <<= SHIFT;
+	rbuf[i] = hnum.native_float / noise.native_float;
+    }
 }
 
 #ifdef AESNI
@@ -262,6 +288,209 @@ void decrypt_int_sum_aesni128(unsigned int *rbuf, int count, std::vector<unsigne
 	decr_rbuf_vec = _mm_sub_epi32(decr_rbuf_vec, noise);
 	_mm_store_si128(reinterpret_cast<__m128i*>(rbuf + i), decr_rbuf_vec);
 	ind = _mm_add_epi32(ind, incr);
+    }
+}
+
+void encrypt_int_sum_aesni128_unroll(unsigned int * __restrict__ encr_sbuf, const unsigned int * __restrict__ sbuf,
+				     int count, int rank, std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge)
+{
+    unsigned int tmp1 = k_n + k_s[rank];
+    unsigned int tmp2 = k_n + k_s[rank + 1];
+    unsigned int ind1[4] = {tmp1, tmp1 + 1, tmp1 + 2, tmp1 + 3};
+    unsigned int ind2[4] = {tmp2, tmp2 + 1, tmp2 + 2, tmp2 + 3};
+    unsigned int noise1[4];
+    unsigned int noise2[4];
+
+    encr_sbuf = (unsigned int *)__builtin_assume_aligned(encr_sbuf, 32);
+    sbuf = (const unsigned int *)__builtin_assume_aligned(sbuf, 32);
+
+    if (!is_edge) {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    AESNI128_ENC_BLOCK(*((__m128i *)ind1), *((__m128i *)noise1), key_schedule);
+	    AESNI128_ENC_BLOCK(*((__m128i *)ind2), *((__m128i *)noise2), key_schedule);
+
+	    noise1[0] = noise1[0] - noise2[0];
+            noise1[1] = noise1[1] - noise2[1];
+            noise1[2] = noise1[2] - noise2[2];
+            noise1[3] = noise1[3] - noise2[3];
+
+	    encr_sbuf[i] = sbuf[i];
+            encr_sbuf[i + 1] = sbuf[i + 1];
+            encr_sbuf[i + 2] = sbuf[i + 2];
+            encr_sbuf[i + 3] = sbuf[i + 3];
+
+	    encr_sbuf[i] += noise1[0];
+            encr_sbuf[i + 1] += noise1[1];
+            encr_sbuf[i + 2] += noise1[2];
+            encr_sbuf[i + 3] +=  noise1[3];
+
+	    ind1[0] += 4;
+            ind1[1] += 4;
+            ind1[2] += 4;
+            ind1[3] += 4;
+
+	    ind2[0] += 4;
+            ind2[1] += 4;
+            ind2[2] += 4;
+            ind2[3] += 4;
+	}
+    } else {
+	for (unsigned int i = 0; i < count; i+=4) {
+	    AESNI128_ENC_BLOCK(*((__m128i *)ind1), *((__m128i *)noise1), key_schedule);
+
+	    encr_sbuf[i] = sbuf[i];
+	    encr_sbuf[i + 1] = sbuf[i + 1];
+	    encr_sbuf[i + 2] = sbuf[i + 2];
+	    encr_sbuf[i + 3] = sbuf[i + 3];
+
+	    encr_sbuf[i] += noise1[0];
+            encr_sbuf[i + 1] += noise1[1];
+            encr_sbuf[i + 2] += noise1[2];
+            encr_sbuf[i + 3] +=  noise1[3];
+
+	    ind1[0] += 4;
+	    ind1[1] += 4;
+	    ind1[2] += 4;
+	    ind1[3] += 4;
+	}
+    }
+}
+
+void decrypt_int_sum_aesni128_unroll(unsigned int * __restrict__ rbuf, int count,
+				     std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int tmp = k_n + k_s[0];
+    unsigned int ind[4] = {tmp, tmp + 1, tmp + 2, tmp + 3};
+    unsigned int noise[4];
+
+    rbuf = (unsigned int *)__builtin_assume_aligned(rbuf, 32);
+
+    for (unsigned int i = 0; i < count; i+=4) {
+	AESNI128_ENC_BLOCK(*((__m128i *)ind), *((__m128i *)noise), key_schedule);
+
+	rbuf[i] = rbuf[i] - noise[0];
+	rbuf[i + 1] = rbuf[i + 1] - noise[1];
+	rbuf[i + 2] = rbuf[i + 2] - noise[2];
+	rbuf[i + 3] = rbuf[i + 3] - noise[3];
+
+	ind[0] += 4;
+	ind[1] += 4;
+	ind[2] += 4;
+	ind[3] += 4;
+    }
+}
+
+void encrypt_float_sum_aesni128_unroll(float * __restrict__ encr_sbuf, const float * __restrict__ sbuf,
+				       int count, int rank, std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int ind[4] = {k_n + 1, k_n + 2, k_n + 3, k_n + 4};
+    signed int exponent[4];
+    HNumbers::HNumber hnum[4];
+
+    encr_sbuf = (float *)__builtin_assume_aligned(encr_sbuf, 32);
+    sbuf = (const float *)__builtin_assume_aligned(sbuf, 32);
+
+    for (unsigned int i = 0; i < count; i+=4) {
+        AESNI128_ENC_BLOCK(*((__m128i *)ind), *((__m128i *)hnum), key_schedule);
+
+	exponent[0] = hnum[0].crypto.exponent;
+	exponent[1] = hnum[1].crypto.exponent;
+	exponent[2] = hnum[2].crypto.exponent;
+	exponent[3] = hnum[3].crypto.exponent;
+
+	hnum[0].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	hnum[1].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	hnum[2].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	hnum[3].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+
+	hnum[0].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[1].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[2].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[3].ieee_float.ieee.mantissa <<= SHIFT;
+
+	hnum[0].native_float *= sbuf[i];
+	hnum[1].native_float *= sbuf[i + 1];
+	hnum[2].native_float *= sbuf[i + 2];
+	hnum[3].native_float *= sbuf[i + 3];
+
+	hnum[0].crypto_simplified.remainder >>= SHIFT;
+	hnum[1].crypto_simplified.remainder >>= SHIFT;
+	hnum[2].crypto_simplified.remainder >>= SHIFT;
+	hnum[3].crypto_simplified.remainder >>= SHIFT;
+
+	hnum[0].crypto.exponent += exponent[0] - IEEE754_FLOAT_BIAS;
+	hnum[1].crypto.exponent += exponent[1] - IEEE754_FLOAT_BIAS;
+	hnum[2].crypto.exponent += exponent[2] - IEEE754_FLOAT_BIAS;
+	hnum[3].crypto.exponent += exponent[3] - IEEE754_FLOAT_BIAS;
+
+	encr_sbuf[i] = hnum[0].native_float;
+	encr_sbuf[i + 1] = hnum[1].native_float;
+	encr_sbuf[i + 2] = hnum[2].native_float;
+	encr_sbuf[i + 3] = hnum[3].native_float;
+
+	ind[0] += 4;
+	ind[1] += 4;
+	ind[2] += 4;
+	ind[3] += 4;
+    }
+}
+
+void decrypt_float_sum_aesni128_unroll(float * __restrict__ rbuf, int count,
+				       std::vector<unsigned int> &k_s, unsigned int k_n)
+{
+    unsigned int ind[4] = {k_n + 1, k_n + 2, k_n + 3, k_n + 4};
+    HNumbers::HNumber hnum[4];
+    HNumbers::HNumber noise[4];
+
+    rbuf = (float *)__builtin_assume_aligned(rbuf, 32);
+
+    for (unsigned int i = 0; i < count; i+=4) {
+        AESNI128_ENC_BLOCK(*((__m128i *)ind), *((__m128i *)noise), key_schedule);
+
+	hnum[0] = reinterpret_cast<HNumbers::HNumber &>(rbuf[i + 0]);
+	hnum[1] = reinterpret_cast<HNumbers::HNumber &>(rbuf[i + 1]);
+	hnum[2] = reinterpret_cast<HNumbers::HNumber &>(rbuf[i + 2]);
+	hnum[3] = reinterpret_cast<HNumbers::HNumber &>(rbuf[i + 3]);
+
+	hnum[0].crypto.exponent -= noise[0].crypto.exponent;
+	hnum[1].crypto.exponent -= noise[1].crypto.exponent;
+	hnum[2].crypto.exponent -= noise[2].crypto.exponent;
+	hnum[3].crypto.exponent -= noise[3].crypto.exponent;
+
+	hnum[0].crypto.exponent += IEEE754_FLOAT_BIAS;
+	hnum[1].crypto.exponent += IEEE754_FLOAT_BIAS;
+	hnum[2].crypto.exponent += IEEE754_FLOAT_BIAS;
+	hnum[3].crypto.exponent += IEEE754_FLOAT_BIAS;
+
+	hnum[0].crypto.exponent <<= SHIFT;
+	hnum[1].crypto.exponent <<= SHIFT;
+	hnum[2].crypto.exponent <<= SHIFT;
+	hnum[3].crypto.exponent <<= SHIFT;
+
+	hnum[0].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[1].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[2].ieee_float.ieee.mantissa <<= SHIFT;
+	hnum[3].ieee_float.ieee.mantissa <<= SHIFT;
+
+	noise[0].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	noise[1].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	noise[2].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+	noise[3].ieee_float.ieee.exponent = IEEE754_FLOAT_BIAS;
+
+	noise[0].ieee_float.ieee.mantissa <<= SHIFT;
+	noise[1].ieee_float.ieee.mantissa <<= SHIFT;
+	noise[2].ieee_float.ieee.mantissa <<= SHIFT;
+	noise[3].ieee_float.ieee.mantissa <<= SHIFT;
+
+	rbuf[i]     = hnum[0].native_float / noise[0].native_float;
+	rbuf[i + 1] = hnum[1].native_float / noise[1].native_float;
+	rbuf[i + 2] = hnum[2].native_float / noise[2].native_float;
+	rbuf[i + 3] = hnum[3].native_float / noise[3].native_float;
+
+	ind[0] += 4;
+	ind[1] += 4;
+	ind[2] += 4;
+	ind[3] += 4;
     }
 }
 

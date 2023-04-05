@@ -69,6 +69,12 @@ void aesni128_load_key(char *enc_key);
 void encrypt_int_sum_aesni128(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
 			      std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge);
 void decrypt_int_sum_aesni128(unsigned int *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n);
+void encrypt_int_sum_aesni128_unroll(unsigned int *encr_sbuf, const unsigned int *sbuf, int count, int rank,
+				     std::vector<unsigned int> &k_s, unsigned int k_n, bool is_edge);
+void decrypt_int_sum_aesni128_unroll(unsigned int *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n);
+void encrypt_float_sum_aesni128_unroll(float *encr_sbuf, const float *sbuf, int count, int rank,
+				       std::vector<unsigned int> &k_s, unsigned int k_n);
+void decrypt_float_sum_aesni128_unroll(float *rbuf, int count, std::vector<unsigned int> &k_s, unsigned int k_n);
 
 #endif
 
