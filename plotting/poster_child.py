@@ -105,7 +105,7 @@ for index, axis in enumerate(ax):
         axis.set_ylabel("Fraction of Cray MPICH latency")
         axis.legend(handles, labels, loc="lower center", ncol=2, bbox_to_anchor=(0, 1.00, 1, 0.2))
     else:
-        axis.text(x=0.26, y=0.83, s="16MB message", size=15)
+        axis.text(x=0.26, y=0.83, s="16MiB message", size=14)
         axis.set_xlabel("Number of ranks")
         axis.set_ylabel("Fraction of Cray MPICH throughput")
         axis.legend().remove()

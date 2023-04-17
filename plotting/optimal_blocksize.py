@@ -42,7 +42,7 @@ for index, label in enumerate(labels):
 ax.bar_label(ax.containers[2], label_type="edge", labels=labels)
 
 # Tweak the visual presentation
-ax.set_title("16MB message size", x=0.75, y=0.93)
+ax.set_title("16MiB message size", x=0.75, y=0.93)
 plt.xlabel("Throughput per rank [GB/s]")
 plt.ylabel("Iallreduce block size [B]", labelpad=-10)
 plt.yticks(rotation=45)
