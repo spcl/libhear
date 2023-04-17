@@ -1,5 +1,5 @@
-CXX = CC
-MPICXX = CC
+CXX = g++
+MPICXX = g++
 INCLUDE_DIR = $(shell pwd)/include/
 SRC_DIR = $(shell pwd)/src/
 TESTS_DIR = $(shell pwd)/tests/
@@ -50,9 +50,20 @@ encr_perf_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) $(AES_FLAGS)
 encr_perf_test : encrypt.po $(TESTS_DIR)/encryption_perf.cpp
 	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/encryption_perf.cpp encrypt.po
 
-hfloat_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
-hfloat_test : hfloat.po $(TESTS_DIR)/hfloats_test.cpp
-	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/hfloats_test.cpp hfloat.po
+hfloat_correctness : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+hfloat_correctness : hfloat.po $(TESTS_DIR)correctness/hfloat.cpp
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)correctness/hfloat.cpp hfloat.po
+
+accuracy : accuracy_addition accuracy_multiplication
+
+accuracy_addition : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+accuracy_addition : $(TESTS_DIR)accuracy/addition.c
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)accuracy/addition.c -lmpfr -lgmp 
+
+accuracy_multiplication : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+accuracy_multiplication : $(TESTS_DIR)accuracy/multiplication.c
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)accuracy/multiplication.c -lmpfr -lgmp
+
 debug: hear_debug
 
 debug_aes: LIBHEAR_CXX_FLAGS += $(AES_FLAGS)
@@ -63,4 +74,4 @@ release : hear_release
 release_aes: hear_release_aes
 
 clean:
-	rm -rf *.po src/*.po *.so encr_perf_test encr_perf_test_aes
+	rm -rf *.po src/*.po *.so encr_perf_test encr_perf_test_aes accuracy_addition accuracy_multiplication hfloat_correctness
