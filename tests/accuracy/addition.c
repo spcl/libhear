@@ -99,7 +99,7 @@ int main (int argc, char *argv[]) {
 
     // Prepare file for saving results
     char filename[200] = {'\0'};
-    sprintf(filename, "./results/%d_float_addition_%s.csv", precision, name);
+    sprintf(filename, "./tests/accuracy/results/%d_float_addition_%s.csv", precision, name);
     FILE *results;
     results = fopen(filename, "w");
     fprintf(results, "error,type\n");
