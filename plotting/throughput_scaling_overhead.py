@@ -3,10 +3,9 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 import itertools
-plt.rcParams.update({'font.size': 14})
 
 # Load data and constants
-dataframe = pd.read_csv("../tests/implementation/results/osu_allreduce.csv")
+dataframe = pd.read_csv("../tests/implementation/results/osu_allreduce_float.csv")
 markers = itertools.cycle(["X", "+", "o", "^"])
 marker = next(markers)
 colors = itertools.cycle(['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
@@ -15,7 +14,7 @@ color = next(colors)
 
 
 # Filter the data
-dataframe = dataframe[dataframe["msgsize"] == 16]  # 8388608
+dataframe = dataframe[dataframe["msgsize"] == 16777216]  # 8388608
 dataframe["block_size"] *= 4
 dataframe["block_size"] = dataframe["block_size"].apply(str)
 dataframe["block_size"] += " B"
@@ -25,53 +24,39 @@ dataframe = dataframe.groupby(['dtype', 'op', 'mode', 'nranks', 'block_size'], a
                                                                                                     'min_tput': np.min,
                                                                                                     'max_lat': np.max,
                                                                                                     'max_tput': np.max})
+dataframe["avg_tput"] *= dataframe["nranks"] / 2
+dataframe["min_tput"] *= dataframe["nranks"] / 2
+dataframe["max_tput"] *= dataframe["nranks"] / 2
 dataframe["nranks"] = dataframe["nranks"].apply(str)
 
 # Plot the naive and optimized versions
-f, ax = plt.subplots(figsize=(12, 4))
+f, ax = plt.subplots(figsize=(16, 4))
 
 # Plot the bars
 baseline = dataframe[dataframe["mode"] == "baseline"]
-plt.plot(baseline["nranks"], baseline["avg_lat"], color=color, marker=marker, label='Cray MPICH', linewidth=1)
-plt.fill_between(baseline["nranks"], baseline["min_lat"], baseline["max_lat"], color=color, alpha=0.2)
+for rank in dataframe["nranks"].unique():
+    dataframe.loc[(dataframe["mode"] == "optimized") & (dataframe["nranks"] == rank), "avg_tput"] /= \
+        float(baseline[baseline["nranks"] == rank]["avg_tput"])
+    dataframe.loc[(dataframe["mode"] == "optimized") & (dataframe["nranks"] == rank), "min_tput"] /= \
+        float(baseline[baseline["nranks"] == rank]["avg_tput"])
+    dataframe.loc[(dataframe["mode"] == "optimized") & (dataframe["nranks"] == rank), "max_tput"] /= \
+        float(baseline[baseline["nranks"] == rank]["avg_tput"])
 optimized = dataframe[dataframe["mode"] == "optimized"]
-optimized["block_size"] = "HEAR"
 for block_size in optimized["block_size"].unique():
     color = next(colors)
     marker = next(markers)
     local = optimized[optimized["block_size"] == block_size]
-    plt.plot(local["nranks"], local["avg_lat"], color, marker=marker, label=block_size, linewidth=1)
-    plt.fill_between(local["nranks"], local["min_lat"], local["max_lat"], color=color, alpha=0.2)
-
-# Plot vertical lines
-plt.axvline(x=4, linewidth=3, color="black")
-plt.text(3.8, 5, f" 2 nodes capacity", rotation=90)
-plt.axvline(x=5, linewidth=1, color="black")
-plt.text(4.83, 2, f" 4 nodes", rotation=90)
-plt.axvline(x=6, linewidth=1, color="black")
-plt.text(5.83, 2, f" 8 nodes", rotation=90)
-plt.axvline(x=7, linewidth=1, color="black")
-plt.text(6.83, 2, f" 16 nodes", rotation=90)
-plt.axvline(x=8, linewidth=1, color="black")
-plt.text(7.83, 2, f" 32 nodes", rotation=90)
-plt.text(1.1, 12, f"PPN scaling", size=18, zorder=5)
-plt.text(4.4, 21, f"Node scaling", size=18, zorder=5)
-plt.text(1.7, 31, " 16B message size")
-
-# Plot background
-ax.add_patch(patches.Rectangle((4, -1), 50, 60, color="lavender", alpha=0.3))
-ax.set_ylim(1, 45)
-for patch in ax.patches:
-    patch.set_zorder(-1)
+    plt.plot(local["nranks"], local["avg_tput"], color, marker=marker, label=block_size, linewidth=1)
+    plt.fill_between(local["nranks"], local["min_tput"], local["max_tput"], color=color, alpha=0.2)
 
 # Tweak the visual presentation
-ax.legend().set_title("")
+ax.legend(loc="lower right")
+ax.set_title("16MB message size", x=0.1, y=0.9)
 plt.xlabel("Number of ranks")
-plt.ylabel("Latency [us]")
+plt.ylabel("Fraction of the Cray MPI throughput")
 ax.set_axisbelow(True)
-ax.grid(which="both")
-plt.yscale("log")
+ax.grid(which="both", alpha=0.5)
 
 # Save file
-plt.savefig("./figures/latency_scaling.pdf",  bbox_inches='tight')
+plt.savefig("./figures/throughput_scaling_overhead.pdf",  bbox_inches='tight')
 plt.show()
