@@ -55,37 +55,3 @@ fig.text(0.98, 0.75, 'Addition', va='center', rotation='vertical')
 fig.text(0.98, 0.30, 'Multiplication', va='center', rotation='vertical')
 plt.savefig("figures/accuracy.pdf", bbox_inches='tight')
 plt.show()
-#
-#
-# for file in glob.glob(f"../tests/accuracy/results/*_float_{op}_{rnd}.csv"):
-#     print(file)
-#     precision = int(os.path.basename(file).split("_")[0])
-#     dataframe = pd.read_csv(file)
-#     if DEBUG:
-#         dataframe.dropna()
-#         for index, error in dataframe.iterrows():
-#             if isinstance(error["error"], str):
-#                 print(error)
-#     dataframe["error"] = dataframe["error"].apply(float)
-#     dataframe["error"] = dataframe["error"][dataframe["error"] > 0]
-#     name = precision
-#     if precision in precision_names:
-#         name = precision_names[precision]
-#     dataframe["precision"] = name
-#     results = results.append(dataframe, ignore_index=True)
-# if DEBUG:
-#     print(results[results["error"] == 0])
-#
-# # Plot
-# sns.set_theme(style="whitegrid", font_scale=2, rc={'figure.figsize': (11.7, 8.27), "ytick.left": True})
-#
-# # Tweak the visual presentation
-# plot.legend().set_title(None)
-# plot.set_yscale('log')
-# plt.grid(True, which="minor", ls="--", c='gray')
-# # current_values = plt.gca().get_yticks()
-# # plt.gca().set_yticklabels(["$10^{"+f"{x:.0f}"+"}$" for x in current_values])
-# plt.xlabel("")
-# plt.ylabel("Relative error")
-# plt.savefig(f"figures/{op}_{rnd}.pdf",  bbox_inches='tight')
-# plt.show()
