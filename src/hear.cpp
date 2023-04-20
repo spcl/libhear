@@ -42,6 +42,7 @@ private:
 
     std::vector<std::vector<unsigned int>> _k_s_storage;
     std::unordered_map<MPI_Comm, std::vector<unsigned int> *> _k_s_map;
+
     std::vector<unsigned int> _k_n_storage;
     std::unordered_map<MPI_Comm, unsigned int *> _k_n_map;
 
@@ -108,6 +109,8 @@ HearState::HearState(
     this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
     this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
     this->prng = encryption::prng_uint;
+
+    _k_n_storage.reserve(1024); /* FIXME */
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
@@ -176,7 +179,8 @@ HearState::~HearState()
 
 inline void HearState::update_k_n(MPI_Comm comm)
 {
-    *(_k_n_map[comm]) = this->prng(*(_k_n_map[comm]));
+    unsigned int tmp = this->prng(*(_k_n_map[comm]));
+    *(_k_n_map[comm]) = tmp;
 }
 
 inline int HearState::insert_new_comm(MPI_Comm comm)
@@ -184,23 +188,31 @@ inline int HearState::insert_new_comm(MPI_Comm comm)
     int comm_size;
     int my_rank;
     int ret;
+    bool ok;
 
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
 
     hear->_k_s_storage.push_back(std::vector<unsigned int>(comm_size, my_rank));
     hear->_k_s_storage.back()[my_rank] = static_cast<unsigned int>(encryption::encr_noise_generator());
-    hear->_k_s_map.insert({comm, &hear->_k_s_storage.back()});
-    ret = MPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, (*(hear->_k_s_map[comm])).data(), 1, MPI_UNSIGNED, comm);
+    ok = hear->_k_s_map.insert({comm, &hear->_k_s_storage.back()}).second;
+    assert(ok);
+    ret = PMPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, (*(hear->_k_s_map[comm])).data(), 1, MPI_UNSIGNED, comm);
     if (ret != MPI_SUCCESS)
         return ret;
 
+    assert(ret == MPI_SUCCESS);
+
     hear->_k_n_storage.push_back(my_rank == root_rank ?
 				 static_cast<unsigned int>(encryption::encr_noise_generator()) : 42);
-    hear->_k_n_map.insert({comm, &hear->_k_n_storage.back()});
-    ret = MPI_Bcast(hear->_k_n_map[comm], 1, MPI_UNSIGNED, root_rank, comm);
+    ok = hear->_k_n_map.insert({comm, &hear->_k_n_storage.back()}).second;
+    assert(ok);
+
+    ret = PMPI_Bcast(hear->_k_n_map[comm], 1, MPI_UNSIGNED, root_rank, comm);
     if (ret != MPI_SUCCESS)
         return ret;
+
+    assert(ret == MPI_SUCCESS);
 
     return MPI_SUCCESS;
 }
