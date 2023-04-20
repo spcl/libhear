@@ -1,12 +1,32 @@
 #!/bin/bash
 
+#SBATCH --job-name="critical_path"
+#SBATCH --account="g34"
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=mikhail.khalilov@inf.ethz.ch
+#SBATCH --time=0:40:00
+#SBATCH --nodes=2
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=normal
+#SBATCH --constraint=mc
+#SBATCH --hint=nomultithread
+#SBATCH --exclusive
+
 NRANKS=72
 NITERATIONS=1000
-LOG_PATH="/users/mkhalilo/hear/logs/"
-OSU_PATH="/users/mkhalilo/hear/osu-micro-benchmarks-7.0.1/c/mpi/collective/osu_allreduce"
-HEAR_PATH="/users/mkhalilo/hear/homomorphic-mpi/lib/libhear_block_size_pipelining.so"
-HEAR_MPOOL_PATH="/users/mkhalilo/hear/homomorphic-mpi/lib/libhear_block_size_mpool.so"
-SRUN_CMD="srun -A g34 -C mc"
+
+OSU_DIR=$1
+HEAR_LIB_DIR=$2
+LOG_DIR=$3
+LOG_PATH="${LOG_DIR}/logs_block_size/"
+OSU_PATH="${OSU_DIR}/osu_allreduce_int"
+
+HEAR_PATH="${HEAR_LIB_DIR}/libhear_release.so"
+HEAR_MPOOL_PATH="${HEAR_LIB_DIR}/libhear_release_mpool.so"
+
+SRUN_CMD="srun -A g34 -C mc --cpu-bind=core --ntasks=72 --ntasks-per-core=1 --ntasks-per-node=36"
+
+eval mkdir $LOG_PATH
 
 for msg_size in {8388608,16777216}
 do

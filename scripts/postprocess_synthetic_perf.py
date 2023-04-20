@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+logs_directory = sys.argv[1]
 
 def parse_osu_measurements_from_file(filename):
     with open(filename, "r") as log:
@@ -44,7 +45,7 @@ def parse_cycles_measurements_from_file(filename):
 
 
 def postprocess_critical_path(logdir, dtype, op, modes, msgsizes, ntrials):
-    with open(f"{logdir}/critical_path.csv", "w") as csv_out:
+    with open(f"{logs_directory}/critical_path.csv", "w") as csv_out:
         csv_out.write("dtype,op,mode,msgsize,trial,malloc,encrypt,comm,decrypt,free\n")
 
         for mode in modes:
@@ -57,7 +58,7 @@ def postprocess_critical_path(logdir, dtype, op, modes, msgsizes, ntrials):
 
 
 def postprocess_block_size(logdir, dtype, op, modes, msgsizes, ntrials, ranks, block_sizes):
-    with open(f"{logdir}/block_size.csv", "w") as csv_out:
+    with open(f"{logs_directory}/block_size.csv", "w") as csv_out:
         csv_out.write("dtype,op,mode,nranks,block_size,msgsize,trial,avg_lat,avg_tput,min_lat,min_tput,max_lat,max_tput\n")
 
         for nranks in ranks:
@@ -78,7 +79,7 @@ def postprocess_block_size(logdir, dtype, op, modes, msgsizes, ntrials, ranks, b
 
 
 def postprocess_osu_allreduce(logdir, dtype, op, modes, small_msgsizes, large_msgsizes, ntrials, ranks, block_sizes):
-    with open(f"{logdir}/osu_allreduce.csv", "w") as csv_out:
+    with open(f"{logs_directory}/allreduce_{dtype}_scaling.csv", "w") as csv_out:
         csv_out.write("dtype,op,mode,nranks,block_size,msgsize,trial,avg_lat,avg_tput,min_lat,min_tput,max_lat,max_tput\n")
 
         for nranks in ranks:
@@ -109,8 +110,34 @@ def postprocess_osu_allreduce(logdir, dtype, op, modes, small_msgsizes, large_ms
                             csv_out.write(f"{dtype},{op},{mode},{nranks},{block_size},{msg_size},{trial+1},{data}\n")
 
 
+def postprocess_single_core_tput(logdir, bufsizes, dtypes, ops, funcs):
+    expname = "single_core_encr_tput"
+    with open(logs_directory + "/" + expname + ".csv", "w") as output:
+        output.write("dtype,op,func,mode,bufsize,tput\n")
+        for dtype in dtypes:
+            for op in ops:
+                for func in funcs:
+                    for bufsize in bufsizes:
+                        csv_row = dtype + "," + op + "," + func
+                        real_bufsize = ""
+                        path = logdir + expname + "." + dtype + "." + op + "." + func + "." + bufsize + ".log"
+                        print(path)
+                        if not Path(path).is_file():
+                            continue
+                        with open(path, "r") as log:
+                            for line in log:
+                                if "Buffer size:" in line:
+                                    real_bufsize = line.split(" ")[-2]
+                                if "encryption throughput:" in line:
+                                    result = ",encryption," + real_bufsize + "," + line.split(" ")[-2]
+                                    output.write(csv_row + result + "\n")
+                                if "decryption throughput:" in line:
+                                    result = ",decryption," + real_bufsize + "," + line.split(" ")[-2]
+                                    output.write(csv_row + result + "\n")
+
+
 postprocess_critical_path(
-    logdir="/users/mkhalilo/hear/logs2/",
+    logdir=f"{logs_directory}/logs_critical_path/",
     dtype="int",
     op="sum",
     modes=["baseline", "naive", "optimized"],
@@ -118,7 +145,7 @@ postprocess_critical_path(
     ntrials=5)
 
 postprocess_block_size(
-    logdir="/users/mkhalilo/hear/logs/",
+    logdir=f"{logs_directory}/logs_block_size/",
     dtype="int",
     op="sum",
     modes=["baseline", "mpool_only", "optimized"],
@@ -129,7 +156,7 @@ postprocess_block_size(
 )
 
 postprocess_osu_allreduce(
-    logdir="/users/mkhalilo/hear/logs3/",
+    logdir=f"{logs_directory}/logs_allreduce_int_scaling/",
     dtype="int",
     op="sum",
     modes=["baseline", "optimized"],
@@ -137,5 +164,25 @@ postprocess_osu_allreduce(
     large_msgsizes=[8388608,16777216],
     ntrials=2,
     ranks=[2,4,8,18,36,72,144,288,576,1152],
-    block_sizes=[32768,65536,131072]
+    block_sizes=[8192,16384,32768,65536,131072,262144,524288]
+)
+
+postprocess_osu_allreduce(
+    logdir=f"{logs_directory}/logs_allreduce_float_scaling/",
+    dtype="float",
+    op="sum",
+    modes=["baseline", "optimized"],
+    small_msgsizes=[8,16],
+    large_msgsizes=[8388608,16777216],
+    ntrials=2,
+    ranks=[2,4,8,18,36,72,144,288,576,1152],
+    block_sizes=[8192,16384,32768,65536,131072,262144,524288]
+)
+
+postprocess_single_core_tput(
+    logdir=f"{logs_directory}/logs_single_core_tput/",
+    bufsizes = [str(2**j) for j in range(1, 22)],
+    dtypes = ["int", "float"],
+    ops = ["sum"],
+    funcs = ["naive", "sha1sse2", "sha1avx2", "aesni", "aesni_unroll"]
 )
