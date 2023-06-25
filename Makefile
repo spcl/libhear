@@ -1,5 +1,5 @@
 CXX = g++
-MPICXX = g++
+MPICXX = CC
 INCLUDE_DIR = $(shell pwd)/include/
 SRC_DIR = $(shell pwd)/src/
 TESTS_DIR = $(shell pwd)/tests/
