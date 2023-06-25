@@ -20,9 +20,9 @@ std::vector<uint64_t> compute(int option1, int option2) {
   HNumbers::HFloat x[4];
   HNumbers::HFloat n[4];
   for (int i = 0; i < 4; i++) {
-    x[i].number.ieee_float.ieee.negative = 0;
-    x[i].number.ieee_float.ieee.exponent = IEEE_FLOAT_EXPONENT;
-    x[i].number.ieee_float.ieee.mantissa = 42;
+    x[i].number().ieee_float.ieee.negative = 0;
+    x[i].number().ieee_float.ieee.exponent = IEEE_FLOAT_EXPONENT;
+    x[i].number().ieee_float.ieee.mantissa = 42;
   }
   uint64_t power = power2(FLOAT_MANTISSA);
   std::string filename = "mantissas_" + std::to_string(option1) + "-" + std::to_string(option2) + ".csv";
@@ -33,33 +33,33 @@ std::vector<uint64_t> compute(int option1, int option2) {
   for (int j = option1; j < option2; j++) {
     std::vector<uint64_t> mantissas(power2(FLOAT_MANTISSA), 0);
     for (uint64_t i = 0; i < power; i+= 4) {
-      n[0].number.crypto.sign = 0;
-      n[0].number.crypto.exponent = 0;
-      n[0].number.crypto.mantissa = i;
-      n[1].number.crypto.sign = 0;
-      n[1].number.crypto.exponent = 0;
-      n[1].number.crypto.mantissa = i + 1;
-      n[2].number.crypto.sign = 0;
-      n[2].number.crypto.exponent = 0;
-      n[2].number.crypto.mantissa = i + 2;
-      n[3].number.crypto.sign = 0;
-      n[3].number.crypto.exponent = 0;
-      n[3].number.crypto.mantissa = i + 3;
+      n[0].number().crypto.sign = 0;
+      n[0].number().crypto.exponent = 0;
+      n[0].number().crypto.mantissa = i;
+      n[1].number().crypto.sign = 0;
+      n[1].number().crypto.exponent = 0;
+      n[1].number().crypto.mantissa = i + 1;
+      n[2].number().crypto.sign = 0;
+      n[2].number().crypto.exponent = 0;
+      n[2].number().crypto.mantissa = i + 2;
+      n[3].number().crypto.sign = 0;
+      n[3].number().crypto.exponent = 0;
+      n[3].number().crypto.mantissa = i + 3;
 
-      x[0].number.ieee_float.ieee.mantissa = j;
-      x[1].number.ieee_float.ieee.mantissa = j;
-      x[2].number.ieee_float.ieee.mantissa = j;
-      x[3].number.ieee_float.ieee.mantissa = j;
+      x[0].number().ieee_float.ieee.mantissa = j;
+      x[1].number().ieee_float.ieee.mantissa = j;
+      x[2].number().ieee_float.ieee.mantissa = j;
+      x[3].number().ieee_float.ieee.mantissa = j;
 
-      n[0].encrypt(x[0].number.native_float);
-      n[1].encrypt(x[1].number.native_float);
-      n[2].encrypt(x[2].number.native_float);
-      n[3].encrypt(x[3].number.native_float);
+      n[0].encrypt(x[0].number().native_float);
+      n[1].encrypt(x[1].number().native_float);
+      n[2].encrypt(x[2].number().native_float);
+      n[3].encrypt(x[3].number().native_float);
 
-      mantissas[n[0].number.crypto.mantissa] += 1;
-      mantissas[n[1].number.crypto.mantissa] += 1;
-      mantissas[n[2].number.crypto.mantissa] += 1;
-      mantissas[n[3].number.crypto.mantissa] += 1;
+      mantissas[n[0].number().crypto.mantissa] += 1;
+      mantissas[n[1].number().crypto.mantissa] += 1;
+      mantissas[n[2].number().crypto.mantissa] += 1;
+      mantissas[n[3].number().crypto.mantissa] += 1;
     }
     if (file) {
       int64_t previous_value = mantissas[0];
