@@ -46,9 +46,9 @@ union HNumber
 class HFloat
 {
 private:
-
     HNumber _number;
 
+public:
     void encrypt(const float &num);
     void decrypt(float &num, uint32_t noise);
         
@@ -62,8 +62,6 @@ private:
 	os << std::bitset<FLOAT_MANTISSA>(h_float._number.crypto.mantissa);
 	return os;
     }
-
-public:
     HNumber& number() { return _number; }
 
 };
