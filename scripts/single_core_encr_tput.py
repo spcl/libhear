@@ -5,7 +5,7 @@ from pathlib import Path
 
 scriptpath = sys.argv[1] + "/bin/encr_perf_test"
 logdir = sys.argv[2] + "/logs_single_core_tput/"
-expname = "single_core_encr_tput"
+expname = "single_core_encr_tput_float"
 nranks = "1"
 niters = "1000"
 bufsizes = [str(2**j) for j in range(1, 22)]
