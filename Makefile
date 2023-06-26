@@ -1,5 +1,5 @@
-CXX = g++
-MPICXX = CC
+CXX = clang++
+MPICXX = mpic++
 INCLUDE_DIR = $(shell pwd)/include/
 SRC_DIR = $(shell pwd)/src/
 TESTS_DIR = $(shell pwd)/tests/
@@ -50,11 +50,15 @@ encr_perf_test : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) $(AES_FLAGS)
 encr_perf_test : encrypt.po $(TESTS_DIR)/encryption_perf.cpp
 	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)/encryption_perf.cpp encrypt.po
 
-correctness : hfloat_correctness
+correctness : hfloat_correctness integer_correctness
 
 hfloat_correctness : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
 hfloat_correctness : hfloat.po $(TESTS_DIR)correctness/hfloat.cpp
 	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)correctness/hfloat.cpp hfloat.po
+
+integer_correctness : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS)
+integer_correctness : $(TESTS_DIR)correctness/integer.cpp
+	$(CXX) $(LIBHEAR_CXX_FLAGS) -o $@ $(TESTS_DIR)correctness/integer.cpp
 
 accuracy : accuracy_addition accuracy_multiplication
 
@@ -80,4 +84,4 @@ release : hear_release accuracy hfloat_correctness security
 release_aes: hear_release_aes
 
 clean:
-	rm -rf *.po src/*.po *.so encr_perf_test encr_perf_test_aes accuracy_addition accuracy_multiplication hfloat_correctness security
+	rm -rf *.po src/*.po *.so encr_perf_test encr_perf_test_aes accuracy_addition accuracy_multiplication hfloat_correctness integer_correctness security

@@ -3,8 +3,9 @@
 HOME_DIR=$(pwd)
 wget https://mvapich.cse.ohio-state.edu/download/mvapich/osu-micro-benchmarks-7.0.1.tar.gz
 tar -xzf osu-micro-benchmarks-7.0.1.tar.gz
+rm osu-micro-benchmarks-7.0.1.tar.gz
 cd osu-micro-benchmarks-7.0.1/
-./configure CC=cc CXX=CC
+./configure CC=cc CXX=mpic++
 cd c/mpi/collective/
 make
 cp ./osu_allreduce $HOME_DIR/osu_allreduce_float
@@ -13,12 +14,13 @@ cp $HOME_DIR/osu_patch/osu_allreduce.c ./
 make
 cp osu_allreduce $HOME_DIR/osu_allreduce_int
 cd $HOME_DIR
+rm -rf osu-micro-benchmarks-7.0.1
 
 cd dnn-proxies/
-CC ./gpt3.cpp -O3 -ffast-math -o gpt3
-CC ./dlrm.cpp -O3 -ffast-math -o dlrm
-CC ./cosmoflow.cpp -O3 -ffast-math -o cosmoflow
-CC ./resnet152.cpp -O3 -ffast-math -o resnet
+mpic++ ./gpt3.cpp -O3 -ffast-math -o gpt3
+mpic++ ./dlrm.cpp -O3 -ffast-math -o dlrm
+mpic++ ./cosmoflow.cpp -O3 -ffast-math -o cosmoflow
+mpic++ ./resnet152.cpp -O3 -ffast-math -o resnet
 
 cd $HOME_DIR
 
@@ -48,4 +50,18 @@ make clean
 
 make hear_mpool_only_tsc
 mv libhear.so build/lib/libhear_critical_path_mpool.so
+make clean
+
+make security
+mv security build/bin
+make clean
+
+make accuracy
+mv accuracy_addition build/bin
+mv accuracy_multiplication build/bin
+make clean
+
+make correctness
+mv hfloat_correctness build/bin
+mv integer_correctness build/bin
 make clean
