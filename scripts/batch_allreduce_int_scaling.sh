@@ -88,6 +88,13 @@ do
     srun_experiment "$nranks" "$srun_cmd"
 done
 
+#for nranks_per_node in {1,2,4,8,18}
+#do
+#    nranks=$(( $nranks_per_node * 2 ))
+#    srun_cmd="srun --cpu-bind=core --nodes=2 --ntasks=${nranks} --ntasks-per-core=1 --ntasks-per-node=${nranks_per_node} --ntasks-per-socket=$nranks_per_node"
+#    srun_experiment "$nranks" "$srun_cmd"
+#done
+
 # FOR RUNS OUTSIDE ONE NODE
 #for nnodes in {2,4,8,16,32}
 #do
