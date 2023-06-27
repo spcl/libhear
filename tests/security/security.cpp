@@ -25,13 +25,10 @@ std::vector<uint64_t> compute(int option1, int option2) {
     x[i].number().ieee_float.ieee.mantissa = 42;
   }
   uint64_t power = power2(FLOAT_MANTISSA);
-  std::string filename = "mantissas_" + std::to_string(option1) + "-" + std::to_string(option2) + ".csv";
-  std::ofstream file(filename);
-  if (file) {
-    file << "Index,Key,Value\n";
-  }
   for (int j = option1; j < option2; j++) {
     std::vector<uint64_t> mantissas(power2(FLOAT_MANTISSA), 0);
+    if (option1 == 0 and j % 10 == 0)
+        std::cout << "Rank 0 processing iteration " << j << std::endl;
     for (uint64_t i = 0; i < power; i+= 4) {
       n[0].number().crypto.sign = 0;
       n[0].number().crypto.exponent = 0;
@@ -61,7 +58,6 @@ std::vector<uint64_t> compute(int option1, int option2) {
       mantissas[n[2].number().crypto.mantissa] += 1;
       mantissas[n[3].number().crypto.mantissa] += 1;
     }
-    if (file) {
       int64_t previous_value = mantissas[0];
       int64_t count = 0;
       for (uint64_t i = 0; i < power; i++) {
@@ -70,11 +66,10 @@ std::vector<uint64_t> compute(int option1, int option2) {
           max_mantissa_indexes[i] = j;
         }
       }
-    }
+
   }
-  file.close();
-  
-  std::string overall_filename = "mantissas_overall_" + std::to_string(option1) + "-" + std::to_string(option2) + ".csv";
+
+  std::string overall_filename = "tests/security/mantissas_overall_" + std::to_string(option1) + "-" + std::to_string(option2) + ".csv";
   std::ofstream overall_file(overall_filename);
   if (overall_file) {
     overall_file << "Index,Key,Value\n";
@@ -101,7 +96,7 @@ int main() {
 
     // Get the name of the processor
     int NUM_TASKS=8388608;
-    int NUM_CORES=287;
+    int NUM_CORES=95;
 
     float TASKS_PER_CORE = (float)NUM_TASKS / NUM_CORES;
     std::vector<uint64_t> results;
@@ -118,7 +113,7 @@ int main() {
     std::vector<uint64_t> overall_results(results.size(), 0);
     MPI_Reduce(results.data(), overall_results.data(), results.size(), MPI_UNSIGNED_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
     if (world_rank == 0) {
-      std::string overall_filename = "mantissas_total.csv";
+      std::string overall_filename = "tests/security/mantissas_total.csv";
       std::ofstream overall_file(overall_filename);
       if (overall_file) {
         overall_file << "Index,Key,Value\n";

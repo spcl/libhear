@@ -25,7 +25,8 @@ LOG_PATH="${LOG_DIR}/logs_dnn/"
 BINARY_PATH="${BIN_DIR}/gpt3"
 HEAR_PATH="${HEAR_LIB_DIR}/libhear_release.so"
 
-SRUN_CMD="srun --cpu-bind=core"
+# SRUN_CMD="srun --cpu-bind=core"
+SRUN_CMD="mpirun -n 384 --hostfile=hostfile"
 
 eval mkdir $LOG_PATH
 

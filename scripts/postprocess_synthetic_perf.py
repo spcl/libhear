@@ -135,54 +135,71 @@ def postprocess_single_core_tput(logdir, bufsizes, dtypes, ops, funcs):
                                     result = ",decryption," + real_bufsize + "," + line.split(" ")[-2]
                                     output.write(csv_row + result + "\n")
 
+try:
+    postprocess_critical_path(
+        logdir=f"{logs_directory}/logs_critical_path/",
+        dtype="int",
+        op="sum",
+        modes=["baseline", "naive", "optimized"],
+        msgsizes=[8,16],
+        ntrials=5)
+except Exception as e:
+    print(f"Critical path failed with exception {e}")
 
-postprocess_critical_path(
-    logdir=f"{logs_directory}/logs_critical_path/",
-    dtype="int",
-    op="sum",
-    modes=["baseline", "naive", "optimized"],
-    msgsizes=[8,16],
-    ntrials=5)
+try:
+    postprocess_block_size(
+        logdir=f"{logs_directory}/logs_block_size/",
+        dtype="int",
+        op="sum",
+        modes=["baseline", "mpool_only", "optimized"],
+        msgsizes=[8388608,16777216],
+        ntrials=2,
+#        ranks=[72],
+        ranks=[96],
+        block_sizes=[1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576]
+    )
+except Exception as e:
+    print(f"Block size failed with exception {e}")
 
-postprocess_block_size(
-    logdir=f"{logs_directory}/logs_block_size/",
-    dtype="int",
-    op="sum",
-    modes=["baseline", "mpool_only", "optimized"],
-    msgsizes=[8388608,16777216],
-    ntrials=2,
-    ranks=[72],
-    block_sizes=[1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576]
-)
+try:
+    postprocess_osu_allreduce(
+        logdir=f"{logs_directory}/logs_allreduce_int_scaling/",
+        dtype="int",
+        op="sum",
+        modes=["baseline", "optimized"],
+        small_msgsizes=[8,16],
+        large_msgsizes=[8388608,16777216],
+        ntrials=2,
+        ranks=[1,2,4,12,24,48],
+        #ranks=[2,4,8,18,36,72,144,288,576,1152],
+        block_sizes=[8192,16384,32768,65536,131072,262144,524288]
+    )
+except Exception as e:
+    print(f"Int scaling failed with exception {e}")
 
-postprocess_osu_allreduce(
-    logdir=f"{logs_directory}/logs_allreduce_int_scaling/",
-    dtype="int",
-    op="sum",
-    modes=["baseline", "optimized"],
-    small_msgsizes=[8,16],
-    large_msgsizes=[8388608,16777216],
-    ntrials=2,
-    ranks=[2,4,8,18,36,72,144,288,576,1152],
-    block_sizes=[8192,16384,32768,65536,131072,262144,524288]
-)
+try:
+    postprocess_osu_allreduce(
+        logdir=f"{logs_directory}/logs_allreduce_float_scaling/",
+        dtype="float",
+        op="sum",
+        modes=["baseline", "optimized"],
+        small_msgsizes=[8,16],
+        large_msgsizes=[8388608,16777216],
+        ntrials=2,
+        ranks=[1, 2, 4, 12, 24, 48],
+        #ranks=[2,4,8,18,36,72,144,288,576,1152],
+        block_sizes=[8192,16384,32768,65536,131072,262144,524288]
+    )
+except Exception as e:
+    print(f"Float scaling failed with exception {e}")
 
-postprocess_osu_allreduce(
-    logdir=f"{logs_directory}/logs_allreduce_float_scaling/",
-    dtype="float",
-    op="sum",
-    modes=["baseline", "optimized"],
-    small_msgsizes=[8,16],
-    large_msgsizes=[8388608,16777216],
-    ntrials=2,
-    ranks=[2,4,8,18,36,72,144,288,576,1152],
-    block_sizes=[8192,16384,32768,65536,131072,262144,524288]
-)
-
-postprocess_single_core_tput(
-    logdir=f"{logs_directory}/logs_single_core_tput/",
-    bufsizes = [str(2**j) for j in range(1, 22)],
-    dtypes = ["int", "float"],
-    ops = ["sum"],
-    funcs = ["naive", "sha1sse2", "sha1avx2", "aesni", "aesni_unroll"]
-)
+try:
+    postprocess_single_core_tput(
+        logdir=f"{logs_directory}/logs_single_core_tput/",
+        bufsizes = [str(2**j) for j in range(1, 22)],
+        dtypes = ["int", "float"],
+        ops = ["sum"],
+        funcs = ["naive", "sha1sse2", "sha1avx2", "aesni", "aesni_unroll"]
+    )
+except Exception as e:
+    print(f"Single core tput failed with exception {e}")

@@ -6,7 +6,7 @@ import numpy as np
 plt.rcParams.update({'font.size': 13})
 
 # Load the data
-dataframe = pd.read_csv("../tests/implementation/results/single_core_encr_tput_float.csv")
+dataframe = pd.read_csv("../tests/implementation/results/single_core_encr_tput.csv")
 colors = itertools.cycle(['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b'])
 color = next(colors)
 
@@ -92,5 +92,5 @@ axis.legend(handles, labels, bbox_to_anchor=(0, 1., 1, 0.2), loc="lower left", n
 axis.set_xlabel("Throughput [GB/s]")
 
 # Save file
-plt.savefig("./figures/throughput_one_core_enc_dec.svg",  bbox_inches='tight')
+plt.savefig("./figures/throughput_one_core_enc_dec.pdf",  bbox_inches='tight')
 plt.show()

@@ -5,7 +5,7 @@ import numpy as np
 plt.rcParams.update({'font.size': 13})
 
 # Load the data
-dataframe = pd.read_csv("../tests/implementation/results/single_core_encr_tput_float.csv")
+dataframe = pd.read_csv("../tests/implementation/results/single_core_encr_tput.csv")
 
 # Parse data
 dataframe = dataframe[~((dataframe["dtype"] == "int") & (dataframe["func"] == "naive"))]

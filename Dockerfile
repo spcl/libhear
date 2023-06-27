@@ -28,6 +28,12 @@ RUN wget http://www.mpich.org/static/downloads/3.1.4/mpich-3.1.4.tar.gz --no-che
     && rm -rf mpich-3.1.4 \
     && rm mpich-3.1.4.tar.gz
 
+# Run the SSH agent and install the key
+RUN eval `ssh-agent -s`
+COPY ./key ~/.ssh/key
+RUN chmod 400 ~/.ssh/key
+RUN ssh-add ~/.ssh/key
+
 # Configure the environment
 WORKDIR ~/project/
 COPY . .

@@ -11,10 +11,10 @@ LIBHEAR_CXX_FLAGS = -I$(INCLUDE_DIR)
 LIBHEAR_OBJS = mpool.po encrypt.po hear.po
 
 %.po: $(SRC_DIR)/%.cpp
-	$(MPICXX) $(LIBHEAR_CXX_FLAGS) -fPIC -o $@ -c $<
+	$(MPICXX) $(LIBHEAR_CXX_FLAGS) $(RELEASE_FLAGS) -fPIC -o $@ -c $<
 
 libhear.so: $(LIBHEAR_OBJS)
-	$(MPICXX) $(LIBHEAR_CXX_FLAGS) -fPIC -shared -o $@ $(LIBHEAR_OBJS)
+	$(MPICXX) $(LIBHEAR_CXX_FLAGS) -fPIC -shared -o $@ $(LIBHEAR_OBJS) -lcrypto -lssl
 
 hear_baseline : LIBHEAR_CXX_FLAGS += $(RELEASE_FLAGS) -D ALLREDUCE_BASELINE=1
 hear_baseline : $(LIBHEAR_OBJS) libhear.so
