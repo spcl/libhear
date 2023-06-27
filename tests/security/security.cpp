@@ -28,7 +28,7 @@ std::vector<uint64_t> compute(int option1, int option2) {
   for (int j = option1; j < option2; j++) {
     std::vector<uint64_t> mantissas(power2(FLOAT_MANTISSA), 0);
     if (option1 == 0 and j % 10 == 0)
-        std::cout << "Rank 0 processing iteration " << j << std::endl;
+        std::cout << "Rank 0 processing iteration " << j << " out of " << option2 << std::endl;
     for (uint64_t i = 0; i < power; i+= 4) {
       n[0].number().crypto.sign = 0;
       n[0].number().crypto.exponent = 0;
