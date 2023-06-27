@@ -12,7 +12,7 @@
 #SBATCH --hint=nomultithread
 #SBATCH --exclusive
 
-NRANKS=24
+NRANKS=96
 NITERATIONS=1000
 
 OSU_DIR=$1

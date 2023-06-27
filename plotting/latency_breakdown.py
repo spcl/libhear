@@ -6,7 +6,8 @@ import itertools
 # Load data and constants
 dataframe = pd.read_csv("../tests/implementation/results/critical_path.csv")
 stages = ["malloc", "encrypt", "comm", "decrypt", "free"]
-order = ["OpenSSL SHA1", "AES-NI + SSE2", "Cray MPICH"]
+# order = ["OpenSSL SHA1", "AES-NI + SSE2", "Cray MPICH"]
+order = ["AES-NI + SSE2", "Cray MPICH"]
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 hatches = itertools.cycle(['/', 'OO', '\\', '..', 'x', 'O', '.'])
 
@@ -15,8 +16,9 @@ dataframe = dataframe[dataframe["msgsize"] == 16].groupby(['dtype', 'op', 'mode'
 
 # Rename the data
 dataframe.loc[dataframe["mode"] == "baseline", "mode"] = "Cray MPICH"
+dataframe = dataframe.drop(dataframe.loc[dataframe["mode"] == "naive", "mode"].index)
 dataframe.loc[dataframe["mode"] == "optimized", "mode"] = "AES-NI + SSE2"
-dataframe.loc[dataframe["mode"] == "naive", "mode"] = "OpenSSL SHA1"
+# dataframe.loc[dataframe["mode"] == "naive", "mode"] = "OpenSSL SHA1"
 
 # Add the previous stages and overhead
 dataframe["overhead"] = 0
