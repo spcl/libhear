@@ -41,10 +41,10 @@ struct HearState
 private:
 
     std::vector<std::vector<unsigned int>> _k_s_storage;
-    std::unordered_map<MPI_Comm, std::vector<unsigned int> *> _k_s_map;
+    std::unordered_map<MPI_Comm, std::size_t> _k_s_map;
 
     std::vector<unsigned int> _k_n_storage;
-    std::unordered_map<MPI_Comm, unsigned int *> _k_n_map;
+    std::unordered_map<MPI_Comm, std::size_t> _k_n_map;
 
     /* MPI_INT + MPI_SUM */
     std::function<void(unsigned int *, const unsigned int *, int, int, std::vector<unsigned int> &, unsigned int, bool)> encrypt_block_int_sum;
@@ -109,8 +109,6 @@ HearState::HearState(
     this->encrypt_block_int_prod = encryption::encrypt_int_prod_naive;
     this->decrypt_block_int_prod = encryption::decrypt_int_prod_naive;
     this->prng = encryption::prng_uint;
-
-    _k_n_storage.reserve(1024); /* FIXME */
 
 #ifdef AESNI
     if (const char* env = std::getenv("HEAR_ENABLE_AESNI")) {
@@ -179,8 +177,8 @@ HearState::~HearState()
 
 inline void HearState::update_k_n(MPI_Comm comm)
 {
-    unsigned int tmp = this->prng(*(_k_n_map[comm]));
-    *(_k_n_map[comm]) = tmp;
+    unsigned int tmp = this->prng(_k_n_storage[_k_n_map[comm]]);
+    _k_n_storage[_k_n_map[comm]] = tmp;
 }
 
 inline int HearState::insert_new_comm(MPI_Comm comm)
@@ -193,22 +191,22 @@ inline int HearState::insert_new_comm(MPI_Comm comm)
     MPI_Comm_size(comm, &comm_size);
     MPI_Comm_rank(comm, &my_rank);
 
-    hear->_k_s_storage.push_back(std::vector<unsigned int>(comm_size, my_rank));
-    hear->_k_s_storage.back()[my_rank] = static_cast<unsigned int>(encryption::encr_noise_generator());
-    ok = hear->_k_s_map.insert({comm, &hear->_k_s_storage.back()}).second;
+    _k_s_storage.push_back(std::vector<unsigned int>(comm_size, my_rank));
+    _k_s_storage.back()[my_rank] = static_cast<unsigned int>(encryption::encr_noise_generator());
+    ok = _k_s_map.insert({comm, _k_s_storage.size() - 1}).second;
     assert(ok);
-    ret = PMPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, (*(hear->_k_s_map[comm])).data(), 1, MPI_UNSIGNED, comm);
+    ret = PMPI_Allgather(MPI_IN_PLACE, 1, MPI_UNSIGNED, _k_s_storage[_k_s_map[comm]].data(), 1, MPI_UNSIGNED, comm);
     if (ret != MPI_SUCCESS)
         return ret;
 
     assert(ret == MPI_SUCCESS);
 
-    hear->_k_n_storage.push_back(my_rank == root_rank ?
+    _k_n_storage.push_back(my_rank == root_rank ?
 				 static_cast<unsigned int>(encryption::encr_noise_generator()) : 42);
-    ok = hear->_k_n_map.insert({comm, &hear->_k_n_storage.back()}).second;
+    ok = _k_n_map.insert({comm, _k_n_storage.size() - 1}).second;
     assert(ok);
 
-    ret = PMPI_Bcast(hear->_k_n_map[comm], 1, MPI_UNSIGNED, root_rank, comm);
+    ret = PMPI_Bcast(&_k_n_storage[_k_n_map[comm]], 1, MPI_UNSIGNED, root_rank, comm);
     if (ret != MPI_SUCCESS)
         return ret;
 
@@ -256,13 +254,13 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 	if (datatype == MPI_INT) {
 	    this->encrypt_block_int_sum(reinterpret_cast<unsigned int *>(encr_sbuf),
 					reinterpret_cast<const unsigned int *>(sendbuf), count, my_rank,
-					*hear->_k_s_map[comm], *hear->_k_n_map[comm],
+					_k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]],
 					my_rank == (comm_size - 1) ? 1 : 0);
 
 	} else if (datatype == MPI_FLOAT) {
 	    this->encrypt_block_float_sum(reinterpret_cast<float *>(encr_sbuf),
 					  reinterpret_cast<const float *>(sendbuf), count, my_rank,
-					  *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+					  _k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]]);
 	} else {
 	    std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
 	    goto fail_cleanup;
@@ -271,7 +269,7 @@ inline void* HearState::encrypt_sendbuf(const void *sendbuf, void *recvbuf, int 
 	if (datatype == MPI_INT) {
 	    this->encrypt_block_int_prod(reinterpret_cast<unsigned int *>(encr_sbuf),
 					 reinterpret_cast<const unsigned int *>(sendbuf), count, my_rank,
-					 *hear->_k_s_map[comm], *hear->_k_n_map[comm],
+					 _k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]],
 					 my_rank == (comm_size - 1) ? 1 : 0);
 	} else {
 	    std::cerr << "Encryption for this MPI datatype is not supported!" << std::endl;
@@ -308,10 +306,10 @@ inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype dat
     if (op == MPI_SUM) {
 	if (datatype == MPI_INT) {
 	    this->decrypt_block_int_sum(reinterpret_cast<unsigned int *>(recvbuf), count,
-					*hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+					_k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]]);
 	} else if (datatype == MPI_FLOAT) {
 	    this->decrypt_block_float_sum(reinterpret_cast<float *>(recvbuf), count,
-					  *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+					  _k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]]);
 	} else {
 	    std::cerr << "Decryption for this MPI datatype is not supported!" << std::endl;
 	    return MPI_ERR_TYPE;
@@ -319,7 +317,7 @@ inline int HearState::decrypt_recvbuf(void *recvbuf, int count, MPI_Datatype dat
     } else if (op == MPI_PROD) {
 	if (datatype == MPI_INT) {
 	    this->decrypt_block_int_prod(reinterpret_cast<unsigned int *>(recvbuf), count,
-					 *hear->_k_s_map[comm], *hear->_k_n_map[comm]);
+					 _k_s_storage[_k_s_map[comm]], _k_n_storage[_k_n_map[comm]]);
 	} else {
 	    std::cerr << "Decryption for this MPI datatype is not supported!" << std::endl;
 	    return MPI_ERR_TYPE;
